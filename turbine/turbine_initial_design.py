@@ -10,6 +10,7 @@ Cp_g = 1148 #J/kgK
 # Container class for complete velocity triangle information for all stages
 @dataclass
 class VelocityTriangle:
+    U : float
     V1 : float
     V2 : float
     V3 : float
@@ -92,7 +93,7 @@ def sound(T, R=287, gamma=1.333):
 
 # Using procedure B
 N = 100
-def get_blade_from_RPM(n, rim_speed, AN2):
+def get_blade_from_RPM(n, rim_speed=Blade.rim_speed_max, AN2=Blade.AN2_max):
     """Gets the blade basic geometry parameters from the RPM
 
     Args:
@@ -172,33 +173,35 @@ def get_midspan_velocity_triangles(flow_coeff, reaction, area_ratio):
 
     # Cast V1 to the same dimension as flow_coeff for easier plotting
     V1 = np.full_like(flow_coeff, V1)
-    return_val = VelocityTriangle(V1,V2,V3,alpha1,alpha2,alpha3,alpha_r2,alpha_r3)
+    return_val = VelocityTriangle(U,V1,V2,V3,alpha1,alpha2,alpha3,alpha_r2,alpha_r3)
 
-    return U, return_val
+    return return_val
 
 def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
     flow_grid, reaction_grid = np.meshgrid(flow_coeffs, reactions)
-    u, vel_tri = get_midspan_velocity_triangles(flow_grid, reaction_grid, area_ratio)
+    vel_tri = get_midspan_velocity_triangles(flow_grid, reaction_grid, area_ratio)
 
     fig, axs = plt.subplots(2,2)
-    plt.set_cmap('jet')
-    fig.set_size_inches(16,9)
+    fig.set_size_inches(16,9)    
     fig.suptitle(f"Ratio: {area_ratio}")
+    plt.set_cmap('jet')
+
 
     # Filter out values outside of the min and max ranges
-    vel_tri.alpha3 = np.where((vel_tri.alpha3 >= Stage.swirl_out_min) & (vel_tri.alpha3 <= Stage.swirl_out_max), vel_tri.alpha3, np.nan)
+    vel_tri.alpha3 = np.where((vel_tri.alpha3 >= Stage.swirl_out_min) & (vel_tri.alpha3 <= Stage.swirl_out_max), vel_tri.alpha3, np.nan) # Swirl Angle Range
+    vel_tri.V3 = np.where((vel_tri.V3 >= Stage.M_out_min*sound(Conditions.T03/temperature_ratio(Stage.M_out_min))) & (vel_tri.V3 <= Stage.M_out_max*sound(Conditions.T03/temperature_ratio(Stage.M_out_max))), vel_tri.V3, np.nan) # Outlet Mach Range
+    vel_tri.V2 = np.where((vel_tri.V2 <= sound(Conditions.T02/temperature_ratio(1))), vel_tri.V2, np.nan)
 
-    # For some reason all of the velocities are outside of the bounds? Doesn't really make sense but ok I guess???
-    # vel_tri.V3 = np.where((vel_tri.V3 >= Stage.M_out_min*sound(Conditions.T03)) & (vel_tri.V3 <= Stage.M_out_max*sound(Conditions.T03)), vel_tri.V3, np.nan)
-    print(f"Speed boundaries: {Stage.M_out_min*sound(Conditions.T03)}, {Stage.M_out_max*sound(Conditions.T03)}")
-    # vel_tri.alpha3 = np.where(vel, vel_tri.alpha3, np.nan)
-
+    # Apply mask for all conditions to alpha3
+    vel_tri.alpha3 = np.where((np.isnan(vel_tri.V3) | (np.isnan(vel_tri.V2))), np.nan, vel_tri.alpha3)
+    
+    # Apply mask for alpha3 to the other conditions
     vel_tri.V3 = np.where(np.isnan(vel_tri.alpha3), np.nan, vel_tri.V3)
     vel_tri.V2 = np.where(np.isnan(vel_tri.alpha3), np.nan, vel_tri.V2)
-    u = np.where(np.isnan(vel_tri.alpha3), np.nan, u)
+    vel_tri.U = np.where(np.isnan(vel_tri.alpha3), np.nan, vel_tri.U)
 
-    N = 100
-    u_contour = axs[0,0].contourf(flow_grid, reaction_grid, u, levels=N)
+    N = 1000
+    u_contour = axs[0,0].contourf(flow_grid, reaction_grid, vel_tri.U, levels=N)
     u_cbar = plt.colorbar(u_contour, ax=axs[0,0])
     u_cbar.set_label("U (m/s)")
 
@@ -225,19 +228,96 @@ def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
         ax.set_xlabel("phi")
         ax.set_ylabel("R")
 
+def get_reaction(vel_tri: VelocityTriangle):
+
+    phi = vel_tri.V2*np.cos(vel_tri.alpha2)/vel_tri.U
+    
+    return 0.5*phi*(np.tan(vel_tri.alpha_r3)-np.tan(vel_tri.alpha_r2))
+    
+    
+
+def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
+    """Get velocity triangle at offset position based on the midspan velocity triangle, using free vortex.
+    NOTE: This procedure assumes constant radius. 
+
+    Args:
+        vel_tri (_type_): _description_
+        r0 (_type_): _description_
+        r_offset (_type_): _description_
+    """
+    ratio = r0/r_offset
+    U = vel_tri.U/ratio
+    
+    Va1 = np.cos(vel_tri.alpha1)*vel_tri.V1
+    Va2 = np.cos(vel_tri.alpha2)*vel_tri.V2
+    Va3 = np.cos(vel_tri.alpha3)*vel_tri.V3 
+    alpha1 = np.atan(ratio*np.tan(vel_tri.alpha1))
+    alpha2 = np.atan(ratio*np.tan(vel_tri.alpha2))
+    alpha3 = np.atan(ratio*np.tan(vel_tri.alpha3))
+    
+    V1 = Va1/np.cos(alpha1)
+    V2 = Va2/np.cos(alpha2)
+    V3 = Va3/np.cos(alpha3)
+
+   
+    alpha_r2 = np.atan(np.tan(alpha2 - (U/Va2)))
+    alpha_r3 = np.atan(np.tan(alpha3 - (U/Va3)))
+    
+    return VelocityTriangle(U, V1, V2, V3, alpha1, alpha2, alpha3, alpha_r2, alpha_r3)
+    
+
+
+def plot_triangle_reaction_ranges(triangle_midspan, RPM):
+    num = 100
+    rim_speeds = np.linspace(Blade.rim_speed_max*0.2, Blade.rim_speed_max, num)
+    an2s = np.linspace(Blade.AN2_max*0.2, Blade.AN2_max, num)
+    rim_grid, an2_grid = np.meshgrid(rim_speeds, an2s)
+    
+    rh_grid, rt_grid = get_blade_from_RPM(RPM, rim_grid, an2_grid)
+    rm_grid = (rh_grid + rt_grid) / 2
+    
+    triangle_hub = get_offset_triangle(triangle_midspan, rm_grid, rh_grid)
+    triangle_tip = get_offset_triangle(triangle_midspan, rm_grid, rt_grid)
+    
+    hub_reaction = get_reaction(triangle_hub)
+    # hub_reaction = np.where(((hub_reaction > 0) & (hub_reaction < 1)), hub_reaction, np.nan)
+    
+    tip_reaction = get_reaction(triangle_tip)
+    # tip_reaction = np.where(((tip_reaction > 0) & (tip_reaction < 1) ), tip_reaction, np.nan)
+    
+    
+    fig, axs = plt.subplots(1,2)
+    hub_contour = axs[0].contourf(rim_grid, an2_grid, hub_reaction, levels=num)
+    hub_cbar = plt.colorbar(hub_contour, ax=axs[0])
+    tip_contour = axs[1].contourf(rim_grid, an2_grid, tip_reaction, levels=num)
+    tip_cbar = plt.colorbar(tip_contour, ax=axs[1])
+
+    
+    
+    
+    
+    
 
     
 
 if __name__ == "__main__":
     
 
-    flow_coeffs = np.arange(0.5,0.7, 0.001)
-    reactions = np.arange(0.35, 0.55, 0.001)
+    flow_coeffs = np.arange(0.55,0.65, 0.001) # Phi
+    reactions = np.arange(0.4,0.5,0.001) # Reaction
+    # Area Ratio of 2.279 obtained form hand calcs as reasonable value
+    analyze_triangle_range(flow_coeffs, reactions, 2.279)
+    
     # area_ratios = np.arange(1,1.5,0.1)
     # # for ratio in area_ratios:
     # #     analyze_triangle_range(flow_coeffs, reactions, ratio)
-    analyze_triangle_range(flow_coeffs, reactions, 2.279)
     # print(get_midspan_velocity_triangles(0.6,0.45))
+    
+    
+    # triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
+    # plot_triangle_reaction_ranges(triangle_midspan, 20000)
+    
+    
     # plot_blades()
 
 
