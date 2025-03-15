@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # Conversion constants
 in_to_mm = 25.4
 ft_to_m = in_to_mm*12/1000
-Cp_g = 1148
+Cp_g = 1148 #J/kgK
 
 # Container class for complete velocity triangle information for all stages
 @dataclass
@@ -49,9 +49,9 @@ class Conditions:
     T02 = 1132.865 # no work, adiabatic
     T02_mix = 1112.203 # After mixing with bleed air
     T03 = 910.521 # Turbine outlet temperature before mixing
-    W_dot = (T02_mix-T03)*Cp_g
+    w = (T02_mix-T03)*Cp_g
     mdot_5i = 6.729 # mdot going across the turbine blades, in kg/s
-    w = W_dot/mdot_5i
+    # w = W_dot/mdot_5i
     
     P01 = 592.845 # kPa
     P03 = 215.888 # kPa
@@ -127,7 +127,7 @@ def plot_blades():
     ax.set_ylabel("Blade Dimensions (m)")
 
 
-def get_midspan_velocity_triangles(flow_coeff, reaction):
+def get_midspan_velocity_triangles(flow_coeff, reaction, area_ratio):
 
     ### Conditions at the inlet ###
     T1 = Conditions.T01/temperature_ratio(Stage.M_in) # Temperature at the first stage
@@ -136,11 +136,12 @@ def get_midspan_velocity_triangles(flow_coeff, reaction):
 
 
     Va = V1*np.cos(alpha1) # Axial velocity of first stage
+    Va2 = Va*area_ratio
 
 
     # Renaming all the variables to be more similar to our formula sheets....
     # Assuming Va = cst for initial design
-    U = Va / flow_coeff
+    U = Va2 / flow_coeff
     phi = flow_coeff
     R = reaction
     W = Conditions.w
@@ -155,8 +156,8 @@ def get_midspan_velocity_triangles(flow_coeff, reaction):
     #       alpha3 = atan(0.5*(W/(U Va) + (R-1)/(0.5phi)))
     #       alpha2 = atan(0.5*(W/(U Va) - (R-1)/(0.5phi)))
 
-    alpha2 = np.atan(0.5*(W/(U*Va) - (R-1)/(0.5*phi)))
-    alpha3 = np.atan(0.5*(W/(U*Va) + (R-1)/(0.5*phi)))
+    alpha2 = np.atan(0.5*(W/(U*Va2) - (R-1)/(0.5*phi)))
+    alpha3 = np.atan(0.5*(W/(U*Va2) + (R-1)/(0.5*phi)))
 
     ##### FINDING THE RELATIVE FLOW ANGLES #####
     # From the formulas
@@ -166,8 +167,8 @@ def get_midspan_velocity_triangles(flow_coeff, reaction):
     alpha_r3 = np.atan(np.tan(alpha3) + 1/phi)
 
     ##### FINDING THE STAGE VELOCITIES #####
-    V2 = Va / np.cos(alpha2)
-    V3 = Va / np.cos(alpha3)
+    V2 = Va2 / np.cos(alpha2)
+    V3 = Va2 / np.cos(alpha3)
 
     # Cast V1 to the same dimension as flow_coeff for easier plotting
     V1 = np.full_like(flow_coeff, V1)
@@ -175,20 +176,21 @@ def get_midspan_velocity_triangles(flow_coeff, reaction):
 
     return U, return_val
 
-def analyze_triangle_range(flow_coeffs, reactions):
+def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
     flow_grid, reaction_grid = np.meshgrid(flow_coeffs, reactions)
-    u, vel_tri = get_midspan_velocity_triangles(flow_grid, reaction_grid)
+    u, vel_tri = get_midspan_velocity_triangles(flow_grid, reaction_grid, area_ratio)
 
     fig, axs = plt.subplots(2,2)
     plt.set_cmap('jet')
     fig.set_size_inches(16,9)
+    fig.suptitle(f"Ratio: {area_ratio}")
 
     # Filter out values outside of the min and max ranges
     vel_tri.alpha3 = np.where((vel_tri.alpha3 >= Stage.swirl_out_min) & (vel_tri.alpha3 <= Stage.swirl_out_max), vel_tri.alpha3, np.nan)
 
     # For some reason all of the velocities are outside of the bounds? Doesn't really make sense but ok I guess???
     # vel_tri.V3 = np.where((vel_tri.V3 >= Stage.M_out_min*sound(Conditions.T03)) & (vel_tri.V3 <= Stage.M_out_max*sound(Conditions.T03)), vel_tri.V3, np.nan)
-    print(f"Speed boundaries: {Stage.M_out_min*sound(Conditions.T03)}")
+    print(f"Speed boundaries: {Stage.M_out_min*sound(Conditions.T03)}, {Stage.M_out_max*sound(Conditions.T03)}")
     # vel_tri.alpha3 = np.where(vel, vel_tri.alpha3, np.nan)
 
     vel_tri.V3 = np.where(np.isnan(vel_tri.alpha3), np.nan, vel_tri.V3)
@@ -227,13 +229,16 @@ def analyze_triangle_range(flow_coeffs, reactions):
     
 
 if __name__ == "__main__":
+    
 
-    flow_coeffs = np.arange(0.5, 0.8, 0.001)
+    flow_coeffs = np.arange(0.5,0.7, 0.001)
     reactions = np.arange(0.35, 0.55, 0.001)
-
-    # analyze_triangle_range(flow_coeffs, reactions)
+    # area_ratios = np.arange(1,1.5,0.1)
+    # # for ratio in area_ratios:
+    # #     analyze_triangle_range(flow_coeffs, reactions, ratio)
+    analyze_triangle_range(flow_coeffs, reactions, 2.279)
     # print(get_midspan_velocity_triangles(0.6,0.45))
-    plot_blades()
+    # plot_blades()
 
 
 
