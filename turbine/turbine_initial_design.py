@@ -107,11 +107,11 @@ def get_blade_from_RPM(n, rim_speed=Blade.rim_speed_max, AN2=Blade.AN2_max):
     blade_rt = np.sqrt(AN2/(np.pi*n**2)+blade_rh**2) # Blade tip radius
     return blade_rh, blade_rt
 
-def plot_blades():
+def plot_blades(rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max):
     # Plotting Blade RPM effect on blade radius
     blade_RPM_range = np.linspace(10000,25000,N) #RPM from 10k to 25k
 
-    blade_rh_range, blade_rt_range = get_blade_from_RPM(blade_RPM_range, Blade.rim_speed_max, Blade.AN2_max)
+    blade_rh_range, blade_rt_range = get_blade_from_RPM(blade_RPM_range, rim_speed, AN2)
 
     blade_length_range = (blade_rt_range - blade_rh_range) # Total blade radial length
     blade_rm_range = blade_length_range/2  + blade_rh_range # Blade midspan radius
@@ -157,15 +157,15 @@ def get_midspan_velocity_triangles(flow_coeff, reaction, area_ratio):
     #       alpha3 = atan(0.5*(W/(U Va) + (R-1)/(0.5phi)))
     #       alpha2 = atan(0.5*(W/(U Va) - (R-1)/(0.5phi)))
 
-    alpha2 = np.atan(0.5*(W/(U*Va2) - (R-1)/(0.5*phi)))
-    alpha3 = np.atan(0.5*(W/(U*Va2) + (R-1)/(0.5*phi)))
+    alpha2 = np.arctan(0.5*(W/(U*Va2) - (R-1)/(0.5*phi)))
+    alpha3 = np.arctan(0.5*(W/(U*Va2) + (R-1)/(0.5*phi)))
 
     ##### FINDING THE RELATIVE FLOW ANGLES #####
     # From the formulas
     # (1/phi) = tan(alpha_r3)-tan(alpha3) = tan(alpha2) - tan(alpha_r2) 
 
-    alpha_r2 = np.atan(np.tan(alpha2) - 1/phi)    
-    alpha_r3 = np.atan(np.tan(alpha3) + 1/phi)
+    alpha_r2 = np.arctan(np.tan(alpha2) - 1/phi)    
+    alpha_r3 = np.arctan(np.tan(alpha3) + 1/phi)
 
     ##### FINDING THE STAGE VELOCITIES #####
     V2 = Va2 / np.cos(alpha2)
@@ -238,7 +238,7 @@ def get_reaction(vel_tri: VelocityTriangle):
 
 def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
     """Get velocity triangle at offset position based on the midspan velocity triangle, using free vortex.
-    NOTE: This procedure assumes constant radius. 
+    NOTE: This procedure assumes constant radius throughout the section.
 
     Args:
         vel_tri (_type_): _description_
@@ -251,26 +251,32 @@ def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
     Va1 = np.cos(vel_tri.alpha1)*vel_tri.V1
     Va2 = np.cos(vel_tri.alpha2)*vel_tri.V2
     Va3 = np.cos(vel_tri.alpha3)*vel_tri.V3 
-    alpha1 = np.atan(ratio*np.tan(vel_tri.alpha1))
-    alpha2 = np.atan(ratio*np.tan(vel_tri.alpha2))
-    alpha3 = np.atan(ratio*np.tan(vel_tri.alpha3))
+    alpha1 = np.arctan(ratio*np.tan(vel_tri.alpha1))
+    alpha2 = np.arctan(ratio*np.tan(vel_tri.alpha2))
+    alpha3 = np.arctan(ratio*np.tan(vel_tri.alpha3))
     
     V1 = Va1/np.cos(alpha1)
     V2 = Va2/np.cos(alpha2)
     V3 = Va3/np.cos(alpha3)
-
    
-    alpha_r2 = np.atan(np.tan(alpha2 - (U/Va2)))
-    alpha_r3 = np.atan(np.tan(alpha3 - (U/Va3)))
+    alpha_r2 = np.arctan(np.tan(alpha2) - (U/Va2))
+    alpha_r3 = np.arctan(np.tan(alpha3) + (U/Va3))
     
     return VelocityTriangle(U, V1, V2, V3, alpha1, alpha2, alpha3, alpha_r2, alpha_r3)
     
 
 
-def plot_triangle_reaction_ranges(triangle_midspan, RPM):
+def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
+    """Plot ranges of offset velocity triangles
+
+    Args:
+        triangle_midspan (_type_): _description_
+        RPM (_type_): _description_
+        rim_speeds (_type_): _description_
+        an2s (_type_): _description_
+    """
     num = 100
-    rim_speeds = np.linspace(Blade.rim_speed_max*0.2, Blade.rim_speed_max, num)
-    an2s = np.linspace(Blade.AN2_max*0.2, Blade.AN2_max, num)
+
     rim_grid, an2_grid = np.meshgrid(rim_speeds, an2s)
     
     rh_grid, rt_grid = get_blade_from_RPM(RPM, rim_grid, an2_grid)
@@ -287,18 +293,20 @@ def plot_triangle_reaction_ranges(triangle_midspan, RPM):
     
     
     fig, axs = plt.subplots(1,2)
+    plt.set_cmap("jet")
+    fig.set_size_inches(16,9)
     hub_contour = axs[0].contourf(rim_grid, an2_grid, hub_reaction, levels=num)
     hub_cbar = plt.colorbar(hub_contour, ax=axs[0])
+    hub_cbar.set_label("Hub Reaction")
+    
     tip_contour = axs[1].contourf(rim_grid, an2_grid, tip_reaction, levels=num)
     tip_cbar = plt.colorbar(tip_contour, ax=axs[1])
+    tip_cbar.set_label("Tip Reaction")
+    
+    for ax in axs:
+        ax.set_xlabel("Rim speed (m/s)")
+        ax.set_ylabel("AN2 (m^2)*(RPM^2)")
 
-    
-    
-    
-    
-    
-
-    
 
 if __name__ == "__main__":
     
@@ -306,7 +314,7 @@ if __name__ == "__main__":
     flow_coeffs = np.arange(0.55,0.65, 0.001) # Phi
     reactions = np.arange(0.4,0.5,0.001) # Reaction
     # Area Ratio of 2.279 obtained form hand calcs as reasonable value
-    analyze_triangle_range(flow_coeffs, reactions, 2.279)
+    # analyze_triangle_range(flow_coeffs, reactions, 2.279)
     
     # area_ratios = np.arange(1,1.5,0.1)
     # # for ratio in area_ratios:
@@ -314,11 +322,13 @@ if __name__ == "__main__":
     # print(get_midspan_velocity_triangles(0.6,0.45))
     
     
-    # triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
-    # plot_triangle_reaction_ranges(triangle_midspan, 20000)
-    
-    
-    # plot_blades()
+    triangle_midspan = get_midspan_velocity_triangles(0.6, 0.6, 2.279)
+    rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max*0.25)
+
+    rim_speeds = np.linspace(Blade.rim_speed_max*0.85, Blade.rim_speed_max, 1000) # Rim speed needs to stay as high as possible
+    an2s = np.linspace(Blade.AN2_max*0.2, Blade.AN2_max, 1000) # AN2 should be much lower than the maximum
+
+    plot_triangle_reaction_ranges(triangle_midspan, 10000, rim_speeds, an2s)
 
 
 
