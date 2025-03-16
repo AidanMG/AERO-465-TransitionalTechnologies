@@ -295,17 +295,17 @@ def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
     fig, axs = plt.subplots(1,2)
     plt.set_cmap("jet")
     fig.set_size_inches(16,9)
-    hub_contour = axs[0].contourf(rim_grid, an2_grid, hub_reaction, levels=num)
+    hub_contour = axs[0].contourf(100*rim_grid/Blade.rim_speed_max, 100*an2_grid/Blade.AN2_max, hub_reaction, levels=num)
     hub_cbar = plt.colorbar(hub_contour, ax=axs[0])
     hub_cbar.set_label("Hub Reaction")
     
-    tip_contour = axs[1].contourf(rim_grid, an2_grid, tip_reaction, levels=num)
+    tip_contour = axs[1].contourf(100*rim_grid/Blade.rim_speed_max, 100*an2_grid/Blade.AN2_max, tip_reaction, levels=num)
     tip_cbar = plt.colorbar(tip_contour, ax=axs[1])
     tip_cbar.set_label("Tip Reaction")
     
     for ax in axs:
-        ax.set_xlabel("Rim speed (m/s)")
-        ax.set_ylabel("AN2 (m^2)*(RPM^2)")
+        ax.set_xlabel("Rim speed, % of structural limit")
+        ax.set_ylabel("AN2, % of structural limit")
 
 
 if __name__ == "__main__":
@@ -322,13 +322,14 @@ if __name__ == "__main__":
     # print(get_midspan_velocity_triangles(0.6,0.45))
     
     
-    triangle_midspan = get_midspan_velocity_triangles(0.6, 0.6, 2.279)
+    triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
     rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max*0.25)
 
-    rim_speeds = np.linspace(Blade.rim_speed_max*0.85, Blade.rim_speed_max, 1000) # Rim speed needs to stay as high as possible
-    an2s = np.linspace(Blade.AN2_max*0.2, Blade.AN2_max, 1000) # AN2 should be much lower than the maximum
+    rim_speeds = np.linspace(Blade.rim_speed_max*0.80, Blade.rim_speed_max, 100) # Rim speed needs to stay as high as possible
+    an2s = np.linspace(Blade.AN2_max*0.1, Blade.AN2_max*0.2, 100) # AN2 should be much lower than the maximum
 
-    plot_triangle_reaction_ranges(triangle_midspan, 10000, rim_speeds, an2s)
+    plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
+    plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.14)
 
 
 
