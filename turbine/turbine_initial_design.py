@@ -20,6 +20,24 @@ class VelocityTriangle:
     alpha_r2 : float
     alpha_r3 : float
 
+@dataclass
+class Pressure:
+    P01: float
+    P02: float
+    P03: float
+    P1: float
+    P2: float
+    P3: float
+
+@dataclass
+class Temperature:
+    T01: float
+    T02: float
+    T03: float
+    T1: float
+    T2: float
+    T3: float    
+
 
 # GIVEN CONSTRAINTS THAT WILL NOT CHANGE (see course outline)
 # Stage
@@ -41,18 +59,27 @@ class Blade:
     zw_Min, zw_Max = 0.80, 1.00
     trailing_t = 0.03*in_to_mm # minimum
     tip_clearance_min, tip_clearance_max = 0.01, 0.02 # Ratio
-    AN2_max = 45E10 * (in_to_mm/1000)**2 #(m**2)*(RPM**2)
+    AN2_max = 4.5E10 * (in_to_mm/1000)**2 #(m**2)*(RPM**2)
     rim_speed_max = 1000 * ft_to_m #m/s
     
 # Boundary conditions derived in Part A, Standard SI units unless noted otherwise 
 class Conditions:
-    T01 = 1132.865 # Turbine inlet temp
+    T0_pre = 515.992 # Temperature before combustion, used in RDTF computations
+    T01 = 1132.865 # Turbine inlet temp, average
     T02 = 1132.865 # no work, adiabatic
     T02_mix = 1112.203 # After mixing with bleed air
     T03 = 910.521 # Turbine outlet temperature before mixing
     w = (T02_mix-T03)*Cp_g
     mdot_5i = 6.729 # mdot going across the turbine blades, in kg/s
     # w = W_dot/mdot_5i
+
+    RDTF = 0.05
+    T01_max = (1+RDTF)*T01 - RDTF*T0_pre # Based on RDTF = (Tmax-Tavg)/(Tavg-Tpre)
+
+    # Assuming a parabolic radial temperature profile peaking at 50% span (y/b=0.5):
+    #       T01(y/b) = A*(y/b - 0.5)**2 + T01_max
+    # Since Integral(0->1) (T01)dy === Tavg, performing the integration yields the constant A=T01_slope
+    T01_slope = (-3/2) * (T01_max-T01)/(0.5**3)
     
     P01 = 592.845 # kPa
     P03 = 215.888 # kPa
@@ -228,10 +255,19 @@ def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
         ax.set_xlabel("phi")
         ax.set_ylabel("R")
 
-def get_reaction(vel_tri: VelocityTriangle):
+def get_pressures(V1, P01, alphas, ARs):
 
+    pass
+
+def get_temperatures(V1, T01, alphas, ARs):
+    pass
+
+def get_mach(V1, M1, alphas, ARs):
+    pass
+
+
+def get_reaction(vel_tri: VelocityTriangle):
     phi = vel_tri.V2*np.cos(vel_tri.alpha2)/vel_tri.U
-    
     return 0.5*phi*(np.tan(vel_tri.alpha_r3)-np.tan(vel_tri.alpha_r2))
     
     
@@ -326,10 +362,10 @@ if __name__ == "__main__":
     rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max*0.25)
 
     rim_speeds = np.linspace(Blade.rim_speed_max*0.80, Blade.rim_speed_max, 100) # Rim speed needs to stay as high as possible
-    an2s = np.linspace(Blade.AN2_max*0.1, Blade.AN2_max*0.2, 100) # AN2 should be much lower than the maximum
+    an2s = np.linspace(Blade.AN2_max*0, Blade.AN2_max, 100) # AN2 should be much lower than the maximum
 
     plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
-    plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.14)
+    plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.95)
 
 
 
