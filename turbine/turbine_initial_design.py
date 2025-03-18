@@ -74,6 +74,8 @@ class Conditions:
     T02_mix = 1112.203 # After mixing with bleed air
     T03 = 910.521 # Turbine outlet temperature before mixing
     w = (T02_mix-T03)*Cp_g
+    
+    mdot_5 = 6.396 # mdot at the intake
     mdot_5i = 6.729 # mdot going across the turbine blades, in kg/s
     # w = W_dot/mdot_5i
 
@@ -478,22 +480,27 @@ def blade_surface_geometry(alphas: np.ndarray):
 
 if __name__ == "__main__":
     
-
-    flow_coeffs = np.arange(0.55,0.65, 0.001) # Phi
-    reactions = np.arange(0.4,0.5,0.001) # Reaction
-    # Area Ratio of 2.279 obtained form hand calcs as reasonable value
+    
+    #### SECTION 1 ####
+    # Midspan velocity triangles
+    
+    # Step 1: analysing reasonable ranges of flow coefficients and reactions to find our bounds
+    # flow_coeffs = np.arange(0.55,0.65, 0.001) # Phi
+    # reactions = np.arange(0.4,0.5,0.001) # Reaction
+    ## Velocity Ratio of 2.279 obtained form hand calcs as reasonable value
     # analyze_triangle_range(flow_coeffs, reactions, 2.279)
-    
-    # area_ratios = np.arange(1,1.5,0.1)
-    # # for ratio in area_ratios:
-    # #     analyze_triangle_range(flow_coeffs, reactions, ratio)
+
     # print(get_midspan_velocity_triangles(0.6,0.45))
+    T1_avg = Conditions.T01/temperature_ratio(Stage.M_in)
+    P1 = Conditions.P01/pressure_ratio(Stage.M_in)
+    V1_avg = Stage.M_in*sound(T1_avg)
+    A1 = (T1_avg*Conditions.mdot_5)/(V1_avg*P1)
+    RPM = np.sqrt(Blade.AN2_max*0.95/(A1/1.4))  
     
     
-    
-    # These initial triangles are incorrect, they assume incompressible flow. Corrections occur later.
+    # These initial triangles are incorrect, they assume incompressible flow....
     triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
-    rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max*0.95, AN2 = Blade.AN2_max*0.95)
+    rh, rt = get_blade_from_RPM(RPM, rim_speed=Blade.rim_speed_max*0.95, AN2 = Blade.AN2_max*0.95)
     rm = (rh + rt)/2
     
     
@@ -512,6 +519,10 @@ if __name__ == "__main__":
     
     Yp=0.1
     AR=1.4
+    
+
+        
+    
     M1s = np.full_like(vane_angles,Stage.M_in) # Filled grid of M1 values
     alpha1s = np.full_like(vane_angles, triangle_midspan.alpha1) # Filled grid of alpha1 values
     Yps = np.linspace(0, Yp, num=NUM, endpoint=True) # Filled list of Yp values, assuming Yp linearly varies from 0 to max loss
@@ -540,4 +551,4 @@ if __name__ == "__main__":
     # plt.plot([0,3],[0,0], 'k--')
 
 
-    plt.show()
+    # plt.show()
