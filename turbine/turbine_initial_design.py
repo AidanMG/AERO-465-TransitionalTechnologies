@@ -1,6 +1,10 @@
 import numpy as np
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
+from scipy import interpolate as intp
+from scipy.optimize import fsolve
+
+plt.set_cmap("jet")
 
 # Conversion constants
 in_to_mm = 25.4
@@ -81,8 +85,11 @@ class Conditions:
     # Since Integral(0->1) (T01)dy === Tavg, performing the integration yields the constant A=T01_slope
     T01_slope = (-3/2) * (T01_max-T01)/(0.5**3)
     
+    
     P01 = 592.845 # kPa
     P03 = 215.888 # kPa
+    
+    T01_var = lambda y : Conditions.T01_slope * (y - 0.5)**2 + Conditions.T01_max
 
 
 def temperature_ratio(M, gamma=1.333):
@@ -284,22 +291,19 @@ def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
     ratio = r0/r_offset
     U = vel_tri.U/ratio
     
-    Va1 = np.cos(vel_tri.alpha1)*vel_tri.V1
+    Va1 = np.cos(vel_tri.alpha2)*vel_tri.V2
     Va2 = np.cos(vel_tri.alpha2)*vel_tri.V2
     Va3 = np.cos(vel_tri.alpha3)*vel_tri.V3 
-    alpha1 = np.arctan(ratio*np.tan(vel_tri.alpha1))
     alpha2 = np.arctan(ratio*np.tan(vel_tri.alpha2))
     alpha3 = np.arctan(ratio*np.tan(vel_tri.alpha3))
     
-    V1 = Va1/np.cos(alpha1)
     V2 = Va2/np.cos(alpha2)
     V3 = Va3/np.cos(alpha3)
    
     alpha_r2 = np.arctan(np.tan(alpha2) - (U/Va2))
     alpha_r3 = np.arctan(np.tan(alpha3) + (U/Va3))
     
-    return VelocityTriangle(U, V1, V2, V3, alpha1, alpha2, alpha3, alpha_r2, alpha_r3)
-    
+    return VelocityTriangle(U, vel_tri.V1, V2, V3, vel_tri.alpha1, alpha2, alpha3, alpha_r2, alpha_r3)
 
 
 def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
@@ -329,7 +333,6 @@ def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
     
     
     fig, axs = plt.subplots(1,2)
-    plt.set_cmap("jet")
     fig.set_size_inches(16,9)
     hub_contour = axs[0].contourf(100*rim_grid/Blade.rim_speed_max, 100*an2_grid/Blade.AN2_max, hub_reaction, levels=num)
     hub_cbar = plt.colorbar(hub_contour, ax=axs[0])
@@ -343,6 +346,135 @@ def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
         ax.set_xlabel("Rim speed, % of structural limit")
         ax.set_ylabel("AN2, % of structural limit")
 
+def full_solver(M1s, alpha1s, ARs, alpha2s, Yps, T01s):
+    # Reshape all arrays to 1D for solver
+    shape = M1s.shape
+    M1s = M1s.ravel()
+    alpha1s = alpha1s.ravel()
+    ARs = ARs.ravel()
+    alpha2s = alpha2s.ravel()
+    Yps = Yps.ravel()
+    
+    
+    def func(M2):
+        return (M1s/M2)*(ARs)*(np.cos(alpha1s)/np.cos(alpha2s))*(F1(M1s)/F2(M2, Yps)) - 1
+    
+    def F1(M1):
+        """(1+(gamma-1)/2 M**2)^(1/2 - gamma/(gamma-1))
+        """
+        return temperature_ratio(M1)**(0.5-(1.333/0.333))
+    
+    def F2(M2, Yp):
+        """F1 but accounting for pressure loss Yp from 1 to 2
+        """
+        return F1(M2)/(1-Yp/pressure_ratio(M2))
+    
+    # Array of Mach Numbers, reshape back into 2d array
+    M2s = fsolve(func, M1s)
+    M2s = M2s.reshape(shape)
+    Yps = Yps.reshape(shape)
+    
+    # Use mach number to solve for T, V, P0, P
+    ys = np.linspace(0,1,len(M1s),endpoint=True)
+    
+    T02s = T01s
+    T2s = T02s/temperature_ratio(M2s)
+    V2s = M2s*sound(T2s)
+    P2s = F2(M2s, Yps)*Conditions.P01
+    P02s = P2s*pressure_ratio(M2s)
+    
+    return M2s, V2s, T2s, T02s, P2s, P02s
+
+def condition_plotter(M2s, V2s, T2s, T02s, P2s, P02s, title=None):
+    fig, axs = plt.subplots(3,2)
+    plt.subplots_adjust(hspace=0.5)
+    if title:
+        plt.suptitle(title)
+    
+    xs = np.linspace(0,1,len(M2s),endpoint=True)
+    xs, ys = np.meshgrid(xs, xs)
+    fig.set_size_inches(9,16)
+    
+    M2plot = axs[0][0].contourf(xs, ys, M2s, levels=100)
+    fig.colorbar(M2plot, ax=axs[0][0])
+    axs[0][0].set_title("M")
+    V2plot = axs[0][1].contourf(xs, ys, V2s, levels=100)
+    fig.colorbar(V2plot, ax=axs[0][1])
+    axs[0][1].set_title("V (m/s)")
+    T02plot = axs[1][0].contourf(xs, ys, T02s, levels=100)
+    fig.colorbar(T02plot, ax=axs[1][0])
+    axs[1][0].set_title("T0 (K)")
+    T2plot = axs[1][1].contourf(xs, ys, T2s, levels=100)
+    fig.colorbar(T2plot, ax=axs[1][1])
+    axs[1][1].set_title("T (K)")
+    P02plot = axs[2][0].contourf(xs, ys, P02s, levels=100)
+    fig.colorbar(P02plot, ax=axs[2][0])
+    axs[2][0].set_title("P0 (kPa)")
+    P2plot = axs[2][1].contourf(xs, ys, P2s, levels=100)
+    fig.colorbar(P2plot, ax=axs[2][1])
+    axs[2][1].set_title("P (kPa)")
+    
+    
+    for ax in axs.ravel():
+        ax.set_xlabel("x/c")
+        ax.set_ylabel("y/b")
+    pass
+    
+
+def angle_grid(midspan:VelocityTriangle, root:VelocityTriangle, tip:VelocityTriangle, num, plot=False):
+    
+    # Grid of x and y coordinates, relative to span and chord length
+    xs = np.linspace(0,1,num,endpoint=True)
+    xs,ys = np.meshgrid(xs,xs)
+    
+    # Reference coordinates
+    x_ref = np.array([0,1]) # Leading and Trailing edge
+    y_ref = np.array([0,0.5,1]) # Root, Midspan, Tip
+    # Angles for vane (NOTE: Need to specify midspan for alpha1, since the velocity triangle process )
+    z_ref = np.array([
+            [midspan.alpha1, root.alpha2],
+            [midspan.alpha1, midspan.alpha2],
+            [midspan.alpha1, tip.alpha2]
+    ]).T
+    
+    # Interpolation function
+    vane_angles = intp.RectBivariateSpline(x_ref, y_ref,z_ref, kx=1, ky=2)
+    
+    # Angles for blade
+    zr_ref = np.array([
+            [root.alpha_r2, root.alpha_r3],
+            [midspan.alpha_r2, midspan.alpha_r3],
+            [tip.alpha_r2, tip.alpha_r3]   
+    ]).T
+    
+    # Interpolation function
+    blade_angles = intp.RectBivariateSpline(x_ref, y_ref, zr_ref, kx=1, ky=2)
+    
+    # Get the actual angles for grid of x,y
+    vanes = vane_angles(xs, ys, grid=False)
+    blades = blade_angles(xs, ys, grid=False)
+    
+    # Plot if needed
+    if plot:
+        fig, axs = plt.subplots(1,2)
+        vane_plt = axs[0].contourf(xs, ys, np.rad2deg(vanes), levels=num)
+        fig.colorbar(vane_plt, ax=axs[0])
+        blade_plt = axs[1].contourf(xs, ys, np.rad2deg(blades), levels=num)
+        fig.colorbar(blade_plt, ax=axs[1])
+
+    return vanes, blades
+
+def blade_surface_geometry(alphas: np.ndarray):
+    ny, nx = alphas.shape
+    
+    xs = np.linspace(0,1,nx,endpoint=True)
+    ys = np.linspace(0,1,ny,endpoint=True)
+    
+    # xs, ys = np.meshgrid(xs, ys)
+    # zs = np.zeros_like(xs)
+    # for i in range(len(zs)):
+    #     print(xs[i])
+    #     print(alphas[i])
 
 if __name__ == "__main__":
     
@@ -358,15 +490,54 @@ if __name__ == "__main__":
     # print(get_midspan_velocity_triangles(0.6,0.45))
     
     
+    
+    # These initial triangles are incorrect, they assume incompressible flow. Corrections occur later.
     triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
-    rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max*0.25)
+    rh, rt = get_blade_from_RPM(20000, rim_speed=Blade.rim_speed_max*0.95, AN2 = Blade.AN2_max*0.95)
+    rm = (rh + rt)/2
+    
+    
 
     rim_speeds = np.linspace(Blade.rim_speed_max*0.80, Blade.rim_speed_max, 100) # Rim speed needs to stay as high as possible
-    an2s = np.linspace(Blade.AN2_max*0, Blade.AN2_max, 100) # AN2 should be much lower than the maximum
+    an2s = np.linspace(Blade.AN2_max*0, Blade.AN2_max, 100)
+    # plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
 
-    plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
-    plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.95)
+    
+    triangle_root = get_offset_triangle(triangle_midspan, rm, rh)
+    triangle_tip = get_offset_triangle(triangle_midspan, rm, rt)
+    
+    print(triangle_root, triangle_midspan, triangle_tip, sep='\n'+50*'-'+'\n')
+    NUM = 21
+    vane_angles, blade_angles = angle_grid(triangle_midspan, triangle_root, triangle_tip, NUM)
+    
+    Yp=0.1
+    AR=1.4
+    M1s = np.full_like(vane_angles,Stage.M_in) # Filled grid of M1 values
+    alpha1s = np.full_like(vane_angles, triangle_midspan.alpha1) # Filled grid of alpha1 values
+    Yps = np.linspace(0, Yp, num=NUM, endpoint=True) # Filled list of Yp values, assuming Yp linearly varies from 0 to max loss
+    Yps, _ = np.meshgrid(Yps, Yps) # Made into grid, loss increasing in chord
+    
+    ARs = np.linspace(1,AR,num=NUM, endpoint=True) # Filled list of area ratio values, assuming AR varies linearly from 0 to max
+    ARs, _ = np.meshgrid(ARs, ARs) # Made into grid, AR increasing in chord
+    
+    ys = np.linspace(0,1,NUM, endpoint=True)
+    T01s = Conditions.T01_var(ys)
+    _, T01s = np.meshgrid(T01s, T01s)
+    condition_array = full_solver(M1s, alpha1s, ARs, vane_angles, Yps, T01s)
+    condition_plotter(*condition_array, "Absolute Conditions along Vanes")
+    
+    
+    
 
+    # plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
+    # plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.95)
+    
+    
+
+    
+    # xs = np.linspace(0.15,3,100)
+    # plt.plot(xs, func(xs))
+    # plt.plot([0,3],[0,0], 'k--')
 
 
     plt.show()
