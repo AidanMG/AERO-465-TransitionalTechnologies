@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from scipy import interpolate as intp
 from scipy.optimize import fsolve
 
-plt.set_cmap("jet")
 
 # Conversion constants
 in_to_mm = 25.4
@@ -299,6 +298,28 @@ def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
     M3s = V3s / sound(T3s)
     return M1s, M2s, M3s    
     
+
+def get_offset_velocity_dict(d: dict, r0, r_offset):
+    dict2 = d.copy()
+    ratio = r0/r_offset
+    U = dict2["U"]/ratio
+    
+    Va1 = np.cos(dict2[""].alpha2)*vel_tri.V2
+    Va2 = np.cos(dict2[""].alpha2)*vel_tri.V2
+    Va3 = np.cos(dict2[""].alpha3)*vel_tri.V3 
+    alpha2 = np.arctan(ratio*np.tan(vel_tri.alpha2))
+    alpha3 = np.arctan(ratio*np.tan(vel_tri.alpha3))
+    
+    V2 = Va2/np.cos(alpha2)
+    V3 = Va3/np.cos(alpha3)
+   
+    alpha_r2 = np.arctan(np.tan(alpha2) - (U/Va2))
+    alpha_r3 = np.arctan(np.tan(alpha3) + (U/Va3))
+    
+    return VelocityTriangle(U, vel_tri.V1, V2, V3, vel_tri.alpha1, alpha2, alpha3, alpha_r2, alpha_r3)    
+
+    return
+
 def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
     """Get velocity triangle at offset position based on the midspan velocity triangle, using free vortex.
     NOTE: This procedure assumes constant radius throughout the section.
@@ -529,11 +550,140 @@ def NANify(*args):
     for arg in args:
         nan_array = np.where(np.isnan(arg), np.nan, nan_array)
     for arg in args:
-        args = np.where(np.isnan(nan_array), np.nan, args)
+        arg = np.where(np.isnan(nan_array), np.nan, arg)
 
     return args
 
+def NANify_dict(d: dict):
+    items = list(d.items())
+    nan_array = np.full_like(items[0], 1)
+    for item in items:
+        nan_array = np.where(np.isnan(item), np.nan, nan_array)
+    for item in items:
+        item = np.where(np.isnan(nan_array), np.nan, item)
+    
+    for i, key in enumerate(d):
+        d[key] = items[i]
 
+
+    return d
+
+def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs, NUM=100):
+    """Doing the entire process using the new method.
+    All input parameters must either be SCALAR, or np.meshgrids() of the correct size
+
+    Args:
+        Ma3s (_type_): _description_
+        alpha3s (_type_): _description_
+        AN2s (_type_): _description_
+        Uhubs (_type_): _description_
+        Rs (_type_): _description_
+        NUM (int, optional): _description_. Defaults to 100.
+    """
+
+    # Static conditions at outlet, from computed total conditions in Part A, with meshgrid
+    T3s = Conditions.T03/temperature_ratio(Ma3s)
+    P3s = Conditions.P03/pressure_ratio(Ma3s)
+
+    # Density, with meshgrid
+    rho3s = P3s*1000/(T3s*R_air)
+
+    # Velocity triangle at 3, absolute
+    V3s = Ma3s*sound(T3s)
+    Va3s = V3s*np.cos(alpha3s)    
+    Vt3s = V3s*np.sin(alpha3s)
+
+    # Area from continuity, using total flow across blade (not including blade bleed air)
+    A3s = Conditions.mdot_5i/(rho3s*Va3s)
+
+    # Blade assumption ranges to get our RPMs
+    # RPMs from area from continuity, get starting blade dimensions
+    RPMs = np.sqrt(AN2s/A3s)
+    rhs, rts = get_blade_from_RPM(RPMs, Uhubs, AN2s)
+    rms = (rts + rhs) / 2
+
+    # Blade velocities at meanline
+    Ums = RPMs * (2*np.pi / 60) * rms
+
+    # Tangengtial velocities at 3
+    Vt3_rels = Vt3s + Ums
+
+    # Relative velocities at 3
+    alpha3_rels = np.atan2(Vt3_rels, Va3s)
+    V3_rels = np.sqrt(Vt3_rels**2 + Va3s **2)
+
+    ## Solving for Conditions at 2:
+    # T1 is constant
+    T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
+    
+    # Temperature-based reaction
+    T2s = T3s + (T1 - T3s)*Rs 
+    M2s = np.sqrt(2*((Conditions.T02/T2s)-1)/(0.333))
+    V2s = M2s * sound(T2s)
+
+    # Tangential velocity at 2
+    Vt2s =  Conditions.w / Ums - Vt3s
+    alpha2s = np.arcsin(Vt2s/V2s)
+    Vt2_rels = Vt2s - Ums
+    alpha2_rels = np.arcsin(Vt2_rels/V2s)  
+
+    Va2s = np.cos(alpha2s)*V2s  
+    V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
+
+    rho2s = Conditions.mdot_5i / (V2s*np.cos(alpha2s) * A3s)
+
+    P2s = rho2s * R_air * T2s / 1000
+    P02s = P2s * pressure_ratio(M2s)
+
+    # Estimated pressure loss coefficient obtained from the assumptions, across the vanes
+    Yps = (Conditions.P01 - P02s)/(P02s - P2s)
+
+    Ma3_rels = sound(T3s) / V3_rels
+    P03_rels = P3s * pressure_ratio(Ma3_rels)
+    T03_rels = T3s * temperature_ratio(Ma3_rels)
+
+    Ma2_rels = sound(T2s) / V2_rels
+    P02_rels = P3s * pressure_ratio(Ma2_rels)
+    T02_rels = T3s * temperature_ratio(Ma2_rels)
+
+    # Estimated pressure loss coefficient obtained from the assumptions, across the blades
+    Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)    
+
+
+    return  ({
+        "T3s":T3s,
+        "P3s":P3s,
+        "V3s":V3s,
+        "Va3s":Va3s,
+        "Vt3s":Vt3s,
+        "A3s":A3s,
+        "RPMs":RPMs,
+        "rhs":rhs,
+        "rts":rts,
+        "rms":rms,
+        "Ums":Ums,
+        "Vt3_rels":Vt3_rels,
+        "alpha3_rels":alpha3_rels,
+        "V3_rels":V3_rels,
+        "T2s":T2s,
+        "M2s":M2s,
+        "V2s":V2s,
+        "alpha2s":alpha2s,
+        "alpha2_rels":alpha2_rels,
+        "V2_rels":V2_rels,
+        "P2s":P2s,
+        "P02s":P02s,
+        "Yps":Yps,
+        "Ma3_rels":Ma3_rels,
+        "P03_rels":P03_rels,
+        "T03_rels":T03_rels,
+        "Ma2_rels":Ma2_rels,
+        "P02_rels":P02_rels,
+        "T02_rels":T02_rels,
+        "Yp_rels":Yp_rels,
+    }, {
+        "T1": T1,
+    })
 
 
 if __name__ == "__main__":
@@ -630,92 +780,66 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 300
+    NUM = 3
 
     # Assume based on Ma3 and Alpha3s
     Ma3 = np.linspace(0.45, Stage.M_out_max*1.0, NUM, endpoint=True)
     alpha3 = np.linspace(np.deg2rad(30), Stage.swirl_out_max*1.0, NUM, endpoint=True)
     # Ma3 = np.array([0.55])
     # alpha3 = np.array([np.deg2rad(35)])
-    Ma3s, alpha3s = np.meshgrid(Ma3, alpha3)
-
 
     # Manual setpoints
-    AN2 = Blade.AN2_max * 0.95
-    Uhub = Blade.rim_speed_max * 0.95
-    # AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, NUM, endpoint=True)
-    # Uhub = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, NUM, endpoint=True)
-
-
+    # AN2 = Blade.AN2_max * 0.95
+    # Uhub = Blade.rim_speed_max * 0.95
+    AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, NUM, endpoint=True)
+    Uhubs = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, NUM, endpoint=True)
 
     # AN2, Uhub = np.meshgrid(AN2s, Uhub)
     R = 0.6 # Assume a reaction
+    Ma3s, alpha3s, AN2s, Uhubs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs)
 
-    # Static conditions at outlet, from computed total conditions in Part A
-    T3s = Conditions.T03/temperature_ratio(Ma3s)
-    P3s = Conditions.P03/pressure_ratio(Ma3s)
+    # # Blade velocities at meanline
+    # Ums = RPMs * (2*np.pi / 60) * rms
 
-    # Density
-    rho3s = P3s*1000/(T3s*R_air)
+    # Vt3_rels = Vt3s + Ums
 
-    # Velocity triangle at 3, absolute
-    V3s = Ma3s*sound(T3s)
-    Va3s = V3s*np.cos(alpha3s)    
-    Vt3s = V3s*np.sin(alpha3s)
-
-    # Area from continuity, using total flow across blade (not including blade bleed air)
-    A3s = Conditions.mdot_5i/(rho3s*Va3s)
-
-    # Blade assumption ranges to get our RPMs
+    # alpha3_rels = np.atan2(Vt3_rels, Va3s)
+    # V3_rels = np.sqrt(Vt3_rels**2 + Va3s **2)
 
 
-    # RPMs from area from continuity, get starting blade dimensions
-    RPMs = np.sqrt(AN2/A3s)
-    rhs, rts = get_blade_from_RPM(RPMs, Uhub, AN2)
-    rms = (rts + rhs) / 2
-
-    # Blade velocities at meanline
-    Ums = RPMs * (2*np.pi / 60) * rms
-
-    Vt3_rels = Vt3s + Ums
-
-    alpha3_rels = np.atan2(Vt3_rels, Va3s)
-    V3_rels = np.sqrt(Vt3_rels**2 + Va3s **2)
-
-
-    ## Solving for Conditions at 2:
-    T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
+    # ## Solving for Conditions at 2:
+    # T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
     
-    T2s = T3s + (T1 - T3s)*R # 
-    M2s = np.sqrt(2*((Conditions.T02/T2s)-1)/(0.333))
-    V2s = M2s * sound(T2s)
+    # T2s = T3s + (T1 - T3s)*R # 
+    # M2s = np.sqrt(2*((Conditions.T02/T2s)-1)/(0.333))
+    # V2s = M2s * sound(T2s)
 
-    Vt2s =  Conditions.w / Ums - Vt3s
-    alpha2s = np.arcsin(Vt2s/V2s)
-    Vt2_rels = Vt2s - Ums
-    alpha2_rels = np.arcsin(Vt2_rels/V2s)  
+    # Vt2s =  Conditions.w / Ums - Vt3s
+    # alpha2s = np.arcsin(Vt2s/V2s)
+    # Vt2_rels = Vt2s - Ums
+    # alpha2_rels = np.arcsin(Vt2_rels/V2s)  
 
-    Va2s = np.cos(alpha2s)*V2s  
-    V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
+    # Va2s = np.cos(alpha2s)*V2s  
+    # V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
 
-    rho2s = Conditions.mdot_5i / (V2s*np.cos(alpha2s) * A3s)
+    # rho2s = Conditions.mdot_5i / (V2s*np.cos(alpha2s) * A3s)
 
-    P2s = rho2s * R_air * T2s / 1000
-    P02s = P2s * pressure_ratio(M2s)
+    # P2s = rho2s * R_air * T2s / 1000
+    # P02s = P2s * pressure_ratio(M2s)
 
 
-    Yps = (Conditions.P01 - P02s)/(P02s - P2s)
+    # Yps = (Conditions.P01 - P02s)/(P02s - P2s)
 
-    Ma3_rels = sound(T3s) / V3_rels
-    P03_rels = P3s * pressure_ratio(Ma3_rels)
-    T03_rels = T3s * temperature_ratio(Ma3_rels)
+    # Ma3_rels = sound(T3s) / V3_rels
+    # P03_rels = P3s * pressure_ratio(Ma3_rels)
+    # T03_rels = T3s * temperature_ratio(Ma3_rels)
 
-    Ma2_rels = sound(T2s) / V2_rels
-    P02_rels = P3s * pressure_ratio(Ma2_rels)
-    T02_rels = T3s * temperature_ratio(Ma2_rels)
+    # Ma2_rels = sound(T2s) / V2_rels
+    # P02_rels = P3s * pressure_ratio(Ma2_rels)
+    # T02_rels = T3s * temperature_ratio(Ma2_rels)
 
-    Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
-
+    # Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
+    var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, R, 100)
     mean_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
     root_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
     tip_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
@@ -725,110 +849,116 @@ if __name__ == "__main__":
     M2_tips = np.empty_like(Ma3s,dtype=float)
     
     
-    V1 = Stage.M_in*sound(T1)
+    V1 = Stage.M_in*sound(const_dict["T1"])
 
-    P02s = np.where(P02s <= Conditions.P01, P02s, np.nan)
-    P03_rels = np.where(P03_rels <= P02_rels, P03_rels, np.nan)
-    
-    Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels)
-
-    for i in range(len(Ma3)):
-        for j in range(len(Ma3)):
-            mean_tris[i][j] = VelocityTriangle(Ums[i,j], V1, V2s[i,j], V3s[i,j], Stage.swirl_in, alpha2s[i,j],alpha3s[i,j], alpha2_rels[i,j], alpha3_rels[i,j])
-            root_tris[i][j] = get_offset_triangle(mean_tris[i][j], rms[i,j], rhs[i,j])
-            tip_tris[i][j] = get_offset_triangle(mean_tris[i][j], rms[i,j], rts[i,j])
-            R_tips[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-                                              tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)
-            R_roots[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-                                              root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)
-            M2_roots[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-                                              root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)[1]
-            M2_tips[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-                                              tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)[1]
-
-    M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
-    Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
-
-
-
-    fig, axs = plt.subplots(1,2)
-    fig.set_size_inches(16,9)
-    fig.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
-    print(np.rad2deg(alpha3s))
-    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
-    axs[0].set_title("Root reaction")
-    plt.colorbar(root_plot, ax=axs[0])
-    
-    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
-    axs[1].set_title("Tip reaction")
-    axs[0].grid()
-    axs[1].grid()    
-    plt.colorbar(tip_plot, ax=axs[1])
-
-
-    fig2, axs = plt.subplots(1,2)
-    fig2.set_size_inches(16,9)
-    fig2.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
-    print(np.rad2deg(alpha3s))
-    Yp_plot_vane = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
-    axs[0].set_title("Yp vane")
-    axs[0].grid()
-    axs[1].grid() 
-    plt.colorbar(Yp_plot_vane, ax=axs[0])
-    
-    Yp_plot_blade = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), Yp_rels, levels=NUM)
-    axs[1].set_title("Yp blade")
-    plt.colorbar(Yp_plot_blade, ax=axs[1])
-
-
-    fig3, axs = plt.subplots(1,2)
-    fig3.set_size_inches(16,9)
-    fig3.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
-    print(np.rad2deg(alpha3s))
-    Mach_root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), M2_roots, levels=NUM)
-    axs[0].set_title("Mach at root")
-    plt.colorbar(Mach_root_plot, ax=axs[0])
-    
-    Mach_tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), M2_tips, levels=NUM)
-    axs[1].set_title("Mach at tip")
-    axs[0].grid()
-    axs[1].grid() 
-    plt.colorbar(Mach_tip_plot, ax=axs[1])
-
-
-
-    for ax in axs:
-        ax.set_xlabel("Mach Number")
-        ax.set_ylabel("alpha 3 (deg)")
-
-
-    fig4, axs = plt.subplots(1,3)
-    fig4.set_size_inches(16,9)
-    fig4.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
-    print(np.rad2deg(alpha3s))
-    alpha2_rel_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2_rels), levels=NUM)
-    axs[0].set_title("Blade inlet angle")
-    plt.colorbar(alpha2_rel_plot, ax=axs[0])
-    
-    alpha3_rel_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha3_rels), levels=NUM)
-    axs[1].set_title("Blade outlet angle")
-    plt.colorbar(alpha3_rel_plot, ax=axs[1])
-
-    
-    alpha2_plot = axs[2].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2s), levels=NUM)
-    axs[2].set_title("Vane outlet angle")    
-    plt.colorbar(alpha2_plot, ax=axs[2])
-
-
-    axs[0].grid()
-    axs[1].grid() 
-    axs[2].grid()
-
+    var_dict["P02s"] = np.where(var_dict["P02s"] <= Conditions.P01, var_dict["P02s"], np.nan)
+    var_dict["P03_rels"] = np.where(var_dict["P03_rels"] <= var_dict["P02_rels"], var_dict["P03_rels"], np.nan)
     
 
-    for ax in axs:
-        ax.set_xlabel("Mach Number")
-        ax.set_ylabel("alpha 3 (deg)")
+    mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
+    # for i in range(len(Ma3)):
+    #     for j in range(len(Ma3)):
+    #         # mean_tris[i][j] = VelocityTriangle(var_dict["Ums"][i,j], V1, var_dict["V2s"][i,j], var_dict["V3s"][i,j], Stage.swirl_in, var_dict["alpha2s"][i,j],alpha3s[i,j], var_dict["alpha2_rels"][i,j], var_dict["alpha3_rels"][i,j])
+    #         root_tris[i][j] = get_offset_triangle(mean_tris[i][j], var_dict["rms"][i,j], var_dict["rhs"][i,j])
+    #         tip_tris[i][j] = get_offset_triangle(mean_tris[i][j], var_dict["rms"][i,j], var_dict["rts"][i,j])
+    #         R_tips[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+    #                                           tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)
+    #         R_roots[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+    #                                           root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)
+    #         M2_roots[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+    #                                           root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)[1]
+    #         M2_tips[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+    #                                           tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)[1]
+
+    # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
+    # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
+
+    print(mean_tris)
+    root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
+    tip_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rts"])
+
+
+
+    # fig, axs = plt.subplots(1,2)
+    # plt.set_cmap("jet")
+
+    # fig.set_size_inches(16,9)
+    # fig.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    # print(np.rad2deg(alpha3s))
+    # root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
+    # axs[0].set_title("Root reaction")
+    # plt.colorbar(root_plot, ax=axs[0])
+    
+    # tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
+    # axs[1].set_title("Tip reaction")
+    # axs[0].grid()
+    # axs[1].grid()    
+    # plt.colorbar(tip_plot, ax=axs[1])
+
+
+    # fig2, axs = plt.subplots(1,2)
+    # fig2.set_size_inches(16,9)
+    # fig2.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    # print(np.rad2deg(alpha3s))
+    # Yp_plot_vane = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
+    # axs[0].set_title("Yp vane")
+    # axs[0].grid()
+    # axs[1].grid() 
+    # plt.colorbar(Yp_plot_vane, ax=axs[0])
+    
+    # Yp_plot_blade = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), Yp_rels, levels=NUM)
+    # axs[1].set_title("Yp blade")
+    # plt.colorbar(Yp_plot_blade, ax=axs[1])
+
+
+    # fig3, axs = plt.subplots(1,2)
+    # fig3.set_size_inches(16,9)
+    # fig3.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    # print(np.rad2deg(alpha3s))
+    # Mach_root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), M2_roots, levels=NUM)
+    # axs[0].set_title("Mach at root")
+    # plt.colorbar(Mach_root_plot, ax=axs[0])
+    
+    # Mach_tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), M2_tips, levels=NUM)
+    # axs[1].set_title("Mach at tip")
+    # axs[0].grid()
+    # axs[1].grid() 
+    # plt.colorbar(Mach_tip_plot, ax=axs[1])
+
+
+
+    # for ax in axs:
+    #     ax.set_xlabel("Mach Number")
+    #     ax.set_ylabel("alpha 3 (deg)")
+
+
+    # fig4, axs = plt.subplots(1,3)
+    # fig4.set_size_inches(16,9)
+    # fig4.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    # print(np.rad2deg(alpha3s))
+    # alpha2_rel_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2_rels), levels=NUM)
+    # axs[0].set_title("Blade inlet angle")
+    # plt.colorbar(alpha2_rel_plot, ax=axs[0])
+    
+    # alpha3_rel_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha3_rels), levels=NUM)
+    # axs[1].set_title("Blade outlet angle")
+    # plt.colorbar(alpha3_rel_plot, ax=axs[1])
+
+    
+    # alpha2_plot = axs[2].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2s), levels=NUM)
+    # axs[2].set_title("Vane outlet angle")    
+    # plt.colorbar(alpha2_plot, ax=axs[2])
+
+
+    # axs[0].grid()
+    # axs[1].grid() 
+    # axs[2].grid()
+
+    
+
+    # for ax in axs:
+    #     ax.set_xlabel("Mach Number")
+    #     ax.set_ylabel("alpha 3 (deg)")
 
     # plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
     # plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.95)
