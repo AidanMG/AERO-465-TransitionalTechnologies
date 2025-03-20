@@ -289,8 +289,16 @@ def get_temp_reaction(T01s, T02s, T03s, V1s, V2s, V3s):
     return (T2s - T3s)/ (T1s - T3s)
 
 
-    
+def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
+    T1s = T01s - (V1s)**2/(2*Cp_g)
+    T2s = T02s - (V2s)**2/(2*Cp_g)
+    T3s = T03s - (V3s)**2/(2*Cp_g)
 
+    M1s = V1s / sound(T1s)
+    M2s = V2s / sound(T2s)
+    M3s = V3s / sound(T3s)
+    return M1s, M2s, M3s    
+    
 def get_offset_triangle(vel_tri: VelocityTriangle, r0, r_offset):
     """Get velocity triangle at offset position based on the midspan velocity triangle, using free vortex.
     NOTE: This procedure assumes constant radius throughout the section.
@@ -620,14 +628,28 @@ if __name__ == "__main__":
     # print(T03s)
 
 
-    #### USING ANTHONY'S PROCEDURE
+    #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 100
+    NUM = 300
 
     # Assume based on Ma3 and Alpha3s
-    Ma3 = np.linspace(Stage.M_out_min, Stage.M_out_max, NUM, endpoint=True)
-    alpha3 = np.linspace(Stage.swirl_out_min, Stage.swirl_out_max, NUM, endpoint=True)
+    Ma3 = np.linspace(0.45, Stage.M_out_max*1.0, NUM, endpoint=True)
+    alpha3 = np.linspace(np.deg2rad(30), Stage.swirl_out_max*1.0, NUM, endpoint=True)
+    # Ma3 = np.array([0.55])
+    # alpha3 = np.array([np.deg2rad(35)])
     Ma3s, alpha3s = np.meshgrid(Ma3, alpha3)
+
+
+    # Manual setpoints
+    AN2 = Blade.AN2_max * 0.95
+    Uhub = Blade.rim_speed_max * 0.95
+    # AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, NUM, endpoint=True)
+    # Uhub = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, NUM, endpoint=True)
+
+
+
+    # AN2, Uhub = np.meshgrid(AN2s, Uhub)
+    R = 0.6 # Assume a reaction
 
     # Static conditions at outlet, from computed total conditions in Part A
     T3s = Conditions.T03/temperature_ratio(Ma3s)
@@ -645,8 +667,7 @@ if __name__ == "__main__":
     A3s = Conditions.mdot_5i/(rho3s*Va3s)
 
     # Blade assumption ranges to get our RPMs
-    AN2 = Blade.AN2_max * 0.85
-    Uhub = Blade.rim_speed_max * 0.95
+
 
     # RPMs from area from continuity, get starting blade dimensions
     RPMs = np.sqrt(AN2/A3s)
@@ -663,7 +684,6 @@ if __name__ == "__main__":
 
 
     ## Solving for Conditions at 2:
-    R = 0.4 # Assume a reaction
     T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
     
     T2s = T3s + (T1 - T3s)*R # 
@@ -694,17 +714,23 @@ if __name__ == "__main__":
     P02_rels = P3s * pressure_ratio(Ma2_rels)
     T02_rels = T3s * temperature_ratio(Ma2_rels)
 
+    Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
+
     mean_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
     root_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
     tip_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
     R_roots = np.empty_like(Ma3s,dtype=float)
     R_tips = np.empty_like(Ma3s,dtype=float)
+    M2_roots = np.empty_like(Ma3s,dtype=float)
+    M2_tips = np.empty_like(Ma3s,dtype=float)
+    
     
     V1 = Stage.M_in*sound(T1)
 
     P02s = np.where(P02s <= Conditions.P01, P02s, np.nan)
     P03_rels = np.where(P03_rels <= P02_rels, P03_rels, np.nan)
-    Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels)
+    
+    Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels)
 
     for i in range(len(Ma3)):
         for j in range(len(Ma3)):
@@ -715,37 +741,97 @@ if __name__ == "__main__":
                                               tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)
             R_roots[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
                                               root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)
+            M2_roots[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+                                              root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)[1]
+            M2_tips[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
+                                              tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)[1]
 
+    M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
+    Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
 
 
     fig, axs = plt.subplots(1,2)
+    fig.set_size_inches(16,9)
+    fig.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
     print(np.rad2deg(alpha3s))
     root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
+    axs[0].set_title("Root reaction")
     plt.colorbar(root_plot, ax=axs[0])
     
     tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
+    axs[1].set_title("Tip reaction")
+    axs[0].grid()
+    axs[1].grid()    
     plt.colorbar(tip_plot, ax=axs[1])
 
 
+    fig2, axs = plt.subplots(1,2)
+    fig2.set_size_inches(16,9)
+    fig2.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    print(np.rad2deg(alpha3s))
+    Yp_plot_vane = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
+    axs[0].set_title("Yp vane")
+    axs[0].grid()
+    axs[1].grid() 
+    plt.colorbar(Yp_plot_vane, ax=axs[0])
+    
+    Yp_plot_blade = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), Yp_rels, levels=NUM)
+    axs[1].set_title("Yp blade")
+    plt.colorbar(Yp_plot_blade, ax=axs[1])
+
+
+    fig3, axs = plt.subplots(1,2)
+    fig3.set_size_inches(16,9)
+    fig3.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    print(np.rad2deg(alpha3s))
+    Mach_root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), M2_roots, levels=NUM)
+    axs[0].set_title("Mach at root")
+    plt.colorbar(Mach_root_plot, ax=axs[0])
+    
+    Mach_tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), M2_tips, levels=NUM)
+    axs[1].set_title("Mach at tip")
+    axs[0].grid()
+    axs[1].grid() 
+    plt.colorbar(Mach_tip_plot, ax=axs[1])
+
+
+
+    for ax in axs:
+        ax.set_xlabel("Mach Number")
+        ax.set_ylabel("alpha 3 (deg)")
+
+
+    fig4, axs = plt.subplots(1,3)
+    fig4.set_size_inches(16,9)
+    fig4.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
+    print(np.rad2deg(alpha3s))
+    alpha2_rel_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2_rels), levels=NUM)
+    axs[0].set_title("Blade inlet angle")
+    plt.colorbar(alpha2_rel_plot, ax=axs[0])
+    
+    alpha3_rel_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha3_rels), levels=NUM)
+    axs[1].set_title("Blade outlet angle")
+    plt.colorbar(alpha3_rel_plot, ax=axs[1])
+
+    
+    alpha2_plot = axs[2].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2s), levels=NUM)
+    axs[2].set_title("Vane outlet angle")    
+    plt.colorbar(alpha2_plot, ax=axs[2])
+
+
+    axs[0].grid()
+    axs[1].grid() 
+    axs[2].grid()
+
     
 
-    
-
-
-
-
-
-
-
-    
-
+    for ax in axs:
+        ax.set_xlabel("Mach Number")
+        ax.set_ylabel("alpha 3 (deg)")
 
     # plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
     # plot_blades(rim_speed=Blade.rim_speed_max*0.95, AN2=Blade.AN2_max*0.95)
-    
-    
-
     
     # xs = np.linspace(0.15,3,100)
     # plt.plot(xs, func(xs))
