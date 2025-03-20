@@ -568,7 +568,7 @@ def NANify_dict(d: dict):
 
     return d
 
-def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs, NUM=100):
+def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     """Doing the entire process using the new method.
     All input parameters must either be SCALAR, or np.meshgrids() of the correct size
 
@@ -780,7 +780,7 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 3
+    NUM = 10
 
     # Assume based on Ma3 and Alpha3s
     Ma3 = np.linspace(0.45, Stage.M_out_max*1.0, NUM, endpoint=True)
@@ -795,8 +795,8 @@ if __name__ == "__main__":
     Uhubs = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, NUM, endpoint=True)
 
     # AN2, Uhub = np.meshgrid(AN2s, Uhub)
-    R = 0.6 # Assume a reaction
-    Ma3s, alpha3s, AN2s, Uhubs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs)
+    Rs = np.linspace(0.5, 0.7, NUM, endpoint=True) # Assume a reaction
+    Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
 
     # # Blade velocities at meanline
     # Ums = RPMs * (2*np.pi / 60) * rms
@@ -839,15 +839,7 @@ if __name__ == "__main__":
     # T02_rels = T3s * temperature_ratio(Ma2_rels)
 
     # Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
-    var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, R, 100)
-    mean_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
-    root_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
-    tip_tris = np.empty_like(Ma3s,dtype=VelocityTriangle)
-    R_roots = np.empty_like(Ma3s,dtype=float)
-    R_tips = np.empty_like(Ma3s,dtype=float)
-    M2_roots = np.empty_like(Ma3s,dtype=float)
-    M2_tips = np.empty_like(Ma3s,dtype=float)
-    
+    var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
     
     V1 = Stage.M_in*sound(const_dict["T1"])
 
@@ -856,6 +848,19 @@ if __name__ == "__main__":
     
 
     mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
+    root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
+    tip_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rts"])   
+    R_tips = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
+                               tip_tris.V1, tip_tris.V2, tip_tris.V3)
+    R_roots = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
+                               root_tris.V1, root_tris.V2, root_tris.V3)   
+    
+    M2_roots = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
+                               root_tris.V1, root_tris.V2, root_tris.V3)[1]
+    M2_tips = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
+                               tip_tris.V1, tip_tris.V2, tip_tris.V3)[1]
+    
+
     # for i in range(len(Ma3)):
     #     for j in range(len(Ma3)):
     #         # mean_tris[i][j] = VelocityTriangle(var_dict["Ums"][i,j], V1, var_dict["V2s"][i,j], var_dict["V3s"][i,j], Stage.swirl_in, var_dict["alpha2s"][i,j],alpha3s[i,j], var_dict["alpha2_rels"][i,j], var_dict["alpha3_rels"][i,j])
@@ -873,9 +878,7 @@ if __name__ == "__main__":
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
-    print(mean_tris)
-    root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
-    tip_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rts"])
+
 
 
 
