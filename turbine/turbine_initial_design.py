@@ -299,24 +299,24 @@ def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
     return M1s, M2s, M3s    
     
 
-def get_offset_velocity_dict(d: dict, r0, r_offset):
-    dict2 = d.copy()
-    ratio = r0/r_offset
-    U = dict2["U"]/ratio
+# def get_offset_velocity_dict(d: dict, r0, r_offset):
+#     dict2 = d.copy()
+#     ratio = r0/r_offset
+#     U = dict2["U"]/ratio
     
-    Va1 = np.cos(dict2[""].alpha2)*vel_tri.V2
-    Va2 = np.cos(dict2[""].alpha2)*vel_tri.V2
-    Va3 = np.cos(dict2[""].alpha3)*vel_tri.V3 
-    alpha2 = np.arctan(ratio*np.tan(vel_tri.alpha2))
-    alpha3 = np.arctan(ratio*np.tan(vel_tri.alpha3))
+#     Va1 = np.cos(dict2[""].alpha2)*vel_tri.V2
+#     Va2 = np.cos(dict2[""].alpha2)*vel_tri.V2
+#     Va3 = np.cos(dict2[""].alpha3)*vel_tri.V3 
+#     alpha2 = np.arctan(ratio*np.tan(vel_tri.alpha2))
+#     alpha3 = np.arctan(ratio*np.tan(vel_tri.alpha3))
     
-    V2 = Va2/np.cos(alpha2)
-    V3 = Va3/np.cos(alpha3)
+#     V2 = Va2/np.cos(alpha2)
+#     V3 = Va3/np.cos(alpha3)
    
-    alpha_r2 = np.arctan(np.tan(alpha2) - (U/Va2))
-    alpha_r3 = np.arctan(np.tan(alpha3) + (U/Va3))
+#     alpha_r2 = np.arctan(np.tan(alpha2) - (U/Va2))
+#     alpha_r3 = np.arctan(np.tan(alpha3) + (U/Va3))
     
-    return VelocityTriangle(U, vel_tri.V1, V2, V3, vel_tri.alpha1, alpha2, alpha3, alpha_r2, alpha_r3)    
+#     return VelocityTriangle(U, vel_tri.V1, V2, V3, vel_tri.alpha1, alpha2, alpha3, alpha_r2, alpha_r3)    
 
     return
 
@@ -523,16 +523,16 @@ def extract_final_conds(condition_array):
         ret_list.append(arg)
     return ret_list
 
-def relativizer(Us, alphas, alpha_rs, M2s, V2s, T0s, Ts, P0s, Ps, direction=1):
-    if direction == 1:
-        V2rs = (V2s*np.sin(alphas) - Us)/(np.sin(alpha_rs))
-    else:
-        V2rs = (V2s*np.sin(alphas) + Us)/(np.sin(alpha_rs))
-    M2rs = np.abs(M2s*(V2rs/V2s))
-    T0rs = temperature_ratio(M2rs)*Ts
-    P0rs = pressure_ratio(M2rs)*Ps
+# def relativizer(Us, alphas, alpha_rs, M2s, V2s, T0s, Ts, P0s, Ps, direction=1):
+#     if direction == 1:
+#         V2rs = (V2s*np.sin(alphas) - Us)/(np.sin(alpha_rs))
+#     else:
+#         V2rs = (V2s*np.sin(alphas) + Us)/(np.sin(alpha_rs))
+#     M2rs = np.abs(M2s*(V2rs/V2s))
+#     T0rs = temperature_ratio(M2rs)*Ts
+#     P0rs = pressure_ratio(M2rs)*Ps
     
-    return M2rs, V2rs, T2s, T02s, P2s, P02s
+#     return M2rs, V2rs, T2s, T02s, P2s, P02s
 
 def gridifier(*args, ax=1):
     ret_list = []
@@ -722,7 +722,17 @@ def yield_subgrids(arrays, axes, indices, values):
     return subgrids
 
 if __name__ == "__main__":
+        
+    var_dict, const_dict = new_method_midspan(0.55, np.deg2rad(35), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6)
+    V1 = Stage.M_in*sound(const_dict["T1"])
     
+    print(var_dict)
+    final_mean_triangle = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], np.deg2rad(35), var_dict["alpha2_rels"], var_dict["alpha3_rels"])
+    # print(final_mean_triangle)
+
+    xs = np.linspace(0,2,5)
+    ys = np.linspace(0,2,5)
+    xs, ys = np.meshgrid(xs, ys)
     
     # #### SECTION 1 ####
     # # Midspan velocity triangles
@@ -875,15 +885,18 @@ if __name__ == "__main__":
 
     # Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
     var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
-    
     V1 = Stage.M_in*sound(const_dict["T1"])
 
     var_dict["P02s"] = np.where(var_dict["P02s"] <= Conditions.P01, var_dict["P02s"], np.nan)
     var_dict["P03_rels"] = np.where(var_dict["P03_rels"] <= var_dict["P02_rels"], var_dict["P03_rels"], np.nan)
+    
+    
+    Yps = var_dict["Yps"]
+    Yp_rels = var_dict["Yp_rels"]
 
     mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
-    tip_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rts"])   
+    tip_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rts"])
     R_tips = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
                                tip_tris.V1, tip_tris.V2, tip_tris.V3)
     R_roots = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
@@ -897,15 +910,14 @@ if __name__ == "__main__":
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
-    data = [R_roots, R_tips, Ma3s, alpha3s]
+    data = [Yps, Yp_rels, Ma3s, alpha3s]
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
     AN2_val = 0.95*Blade.AN2_max
     U_val = 0.95*Blade.rim_speed_max
     R_val = 0.65
 
-    R_roots, R_tips, Ma3s, alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6))
-
+    Yps, Yp_rels, Ma3s, alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6))
 
     # fig, axs = plt.subplots(1,2)
     # plt.set_cmap("jet")
@@ -927,11 +939,11 @@ if __name__ == "__main__":
 
     fig.set_size_inches(16,9)
     fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
-    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
+    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
     axs[0].set_title("Root reaction")
     plt.colorbar(root_plot, ax=axs[0])
     
-    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
+    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), Yp_rels, levels=NUM)
     axs[1].set_title("Tip reaction")
     axs[0].grid()
     axs[1].grid()    
@@ -1008,5 +1020,10 @@ if __name__ == "__main__":
     # plt.plot(xs, func(xs))
     # plt.plot([0,3],[0,0], 'k--')
 
+    
 
-    plt.show()
+
+    # print(f"xs: {xs}")
+    # print(f"ys: {ys}")
+
+    # plt.show()    
