@@ -638,13 +638,13 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     # Estimated pressure loss coefficient obtained from the assumptions, across the vanes
     Yps = (Conditions.P01 - P02s)/(P02s - P2s)
 
-    Ma3_rels = sound(T3s) / V3_rels
+    Ma3_rels = V3_rels / sound(T3s)
     P03_rels = P3s * pressure_ratio(Ma3_rels)
     T03_rels = T3s * temperature_ratio(Ma3_rels)
 
-    Ma2_rels = sound(T2s) / V2_rels
-    P02_rels = P3s * pressure_ratio(Ma2_rels)
-    T02_rels = T3s * temperature_ratio(Ma2_rels)
+    Ma2_rels =  V2_rels / sound(T2s) 
+    P02_rels = P2s * pressure_ratio(Ma2_rels)
+    T02_rels = T2s * temperature_ratio(Ma2_rels)
 
     # Estimated pressure loss coefficient obtained from the assumptions, across the blades
     Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)    
@@ -723,7 +723,7 @@ def yield_subgrids(arrays, axes, indices, values):
 
 if __name__ == "__main__":
         
-    var_dict, const_dict = new_method_midspan(0.55, np.deg2rad(35), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6)
+    var_dict, const_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6)
     V1 = Stage.M_in*sound(const_dict["T1"])
     
     print(var_dict)
@@ -825,21 +825,21 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 100
+    NUM = 20
 
     # Assume based on Ma3 and Alpha3s
-    Ma3 = np.linspace(0.0, Stage.M_out_max*1.0, NUM, endpoint=True)
-    alpha3 = np.linspace(0, Stage.swirl_out_max*1.0, NUM, endpoint=True)
+    Ma3 = np.linspace(Stage.M_out_min, Stage.M_out_max*1.0, NUM, endpoint=True)
+    alpha3 = np.linspace(Stage.swirl_out_min, Stage.swirl_out_max*1.0, NUM, endpoint=True)
     # Ma3 = np.array([0.55])
     # alpha3 = np.array([np.deg2rad(35)])
 
     # Manual setpoints
     # AN2 = Blade.AN2_max * 0.95
     # Uhub = Blade.rim_speed_max * 0.95
-    AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, 10, endpoint=True)
-    Uhubs = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 10, endpoint=True)
+    AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 20, endpoint=True)
+    Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 20, endpoint=True)
 
-    Rs = np.linspace(0.5, 0.7, 10, endpoint=True) # Assume a reaction
+    Rs = np.linspace(0.4, 0.7, 10, endpoint=True) # Assume a reaction
     Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
@@ -887,10 +887,6 @@ if __name__ == "__main__":
     var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
     V1 = Stage.M_in*sound(const_dict["T1"])
 
-    var_dict["P02s"] = np.where(var_dict["P02s"] <= Conditions.P01, var_dict["P02s"], np.nan)
-    var_dict["P03_rels"] = np.where(var_dict["P03_rels"] <= var_dict["P02_rels"], var_dict["P03_rels"], np.nan)
-    
-    
     Yps = var_dict["Yps"]
     Yp_rels = var_dict["Yp_rels"]
 
@@ -910,14 +906,14 @@ if __name__ == "__main__":
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
-    data = [Yps, Yp_rels, Ma3s, alpha3s]
+    data = [Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s, alpha3s]
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
     AN2_val = 0.95*Blade.AN2_max
     U_val = 0.95*Blade.rim_speed_max
-    R_val = 0.65
+    R_val = 0.6
 
-    Yps, Yp_rels, Ma3s, alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6))
+    Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
 
     # fig, axs = plt.subplots(1,2)
     # plt.set_cmap("jet")
@@ -939,11 +935,11 @@ if __name__ == "__main__":
 
     fig.set_size_inches(16,9)
     fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
-    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
+    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
     axs[0].set_title("Root reaction")
     plt.colorbar(root_plot, ax=axs[0])
     
-    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), Yp_rels, levels=NUM)
+    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
     axs[1].set_title("Tip reaction")
     axs[0].grid()
     axs[1].grid()    
@@ -1026,4 +1022,4 @@ if __name__ == "__main__":
     # print(f"xs: {xs}")
     # print(f"ys: {ys}")
 
-    # plt.show()    
+    plt.show()    
