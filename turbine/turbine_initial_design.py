@@ -685,6 +685,41 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
         "T1": T1,
     })
 
+import numpy as np
+
+def yield_subgrids(arrays, axes, indices, values):
+    """
+    Extracts subgrids from the given meshgrid arrays by selecting the closest indices along specified axes.
+    
+    Parameters:
+        arrays (list of np.ndarray): List of N-dimensional arrays to slice.
+        axes (list of np.ndarray): Corresponding axis arrays that define the meshgrid.
+        indices (list of int): Indices of axes to select.
+        values (list of float): Target values to find the nearest match for in the specified axes.
+    
+    Returns:
+        tuple: A tuple of subgrid arrays sliced at the nearest indices.
+    """
+    # Ensure inputs are valid
+    assert len(indices) == len(values), "Indices and values lists must be of the same length."
+    
+    # Find the nearest index for each specified axis
+    nearest_indices = []
+    for axis, value in zip(indices, values):
+        axis_values = axes[axis]
+        diff = np.abs(axis_values - value)
+        nearest_idx = np.unravel_index(np.argmin(diff), axis_values.shape)
+        nearest_indices.append(nearest_idx[axis])  # Get index for the specific axis
+    
+    # Create slices for each dimension
+    slices = [slice(None)] * arrays[0].ndim  # Initialize slices as full for all dimensions
+    for axis, idx in zip(indices, nearest_indices):
+        slices[axis] = idx  # Select only the nearest index for the specified axes
+    
+    # Apply slicing to all arrays
+    subgrids = tuple(array[tuple(slices)] for array in arrays)
+    
+    return subgrids
 
 if __name__ == "__main__":
     
@@ -780,23 +815,23 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 10
+    NUM = 100
 
     # Assume based on Ma3 and Alpha3s
-    Ma3 = np.linspace(0.45, Stage.M_out_max*1.0, NUM, endpoint=True)
-    alpha3 = np.linspace(np.deg2rad(30), Stage.swirl_out_max*1.0, NUM, endpoint=True)
+    Ma3 = np.linspace(0.0, Stage.M_out_max*1.0, NUM, endpoint=True)
+    alpha3 = np.linspace(0, Stage.swirl_out_max*1.0, NUM, endpoint=True)
     # Ma3 = np.array([0.55])
     # alpha3 = np.array([np.deg2rad(35)])
 
     # Manual setpoints
     # AN2 = Blade.AN2_max * 0.95
     # Uhub = Blade.rim_speed_max * 0.95
-    AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, NUM, endpoint=True)
-    Uhubs = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, NUM, endpoint=True)
+    AN2s = np.linspace(0.90*Blade.AN2_max, 1.0*Blade.AN2_max, 10, endpoint=True)
+    Uhubs = np.linspace(0.90*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 10, endpoint=True)
 
-    # AN2, Uhub = np.meshgrid(AN2s, Uhub)
-    Rs = np.linspace(0.5, 0.7, NUM, endpoint=True) # Assume a reaction
+    Rs = np.linspace(0.5, 0.7, 10, endpoint=True) # Assume a reaction
     Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
+    mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
     # # Blade velocities at meanline
     # Ums = RPMs * (2*np.pi / 60) * rms
@@ -845,7 +880,6 @@ if __name__ == "__main__":
 
     var_dict["P02s"] = np.where(var_dict["P02s"] <= Conditions.P01, var_dict["P02s"], np.nan)
     var_dict["P03_rels"] = np.where(var_dict["P03_rels"] <= var_dict["P02_rels"], var_dict["P03_rels"], np.nan)
-    
 
     mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
@@ -859,35 +893,25 @@ if __name__ == "__main__":
                                root_tris.V1, root_tris.V2, root_tris.V3)[1]
     M2_tips = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
                                tip_tris.V1, tip_tris.V2, tip_tris.V3)[1]
-    
-
-    # for i in range(len(Ma3)):
-    #     for j in range(len(Ma3)):
-    #         # mean_tris[i][j] = VelocityTriangle(var_dict["Ums"][i,j], V1, var_dict["V2s"][i,j], var_dict["V3s"][i,j], Stage.swirl_in, var_dict["alpha2s"][i,j],alpha3s[i,j], var_dict["alpha2_rels"][i,j], var_dict["alpha3_rels"][i,j])
-    #         root_tris[i][j] = get_offset_triangle(mean_tris[i][j], var_dict["rms"][i,j], var_dict["rhs"][i,j])
-    #         tip_tris[i][j] = get_offset_triangle(mean_tris[i][j], var_dict["rms"][i,j], var_dict["rts"][i,j])
-    #         R_tips[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-    #                                           tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)
-    #         R_roots[i][j] = get_temp_reaction(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-    #                                           root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)
-    #         M2_roots[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-    #                                           root_tris[i][j].V1, root_tris[i][j].V2, root_tris[i][j].V3)[1]
-    #         M2_tips[i][j] = get_mach_offset(Conditions.T01, Conditions.T02_mix, Conditions.T03, 
-    #                                           tip_tris[i][j].V1, tip_tris[i][j].V2, tip_tris[i][j].V3)[1]
 
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
+    data = [R_roots, R_tips, Ma3s, alpha3s]
+    mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
+    AN2_val = 0.95*Blade.AN2_max
+    U_val = 0.95*Blade.rim_speed_max
+    R_val = 0.65
 
+    R_roots, R_tips, Ma3s, alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6))
 
 
     # fig, axs = plt.subplots(1,2)
     # plt.set_cmap("jet")
 
     # fig.set_size_inches(16,9)
-    # fig.suptitle(f"R={R}, AN^2={AN2/Blade.AN2_max*100:.2f}%, Uhub={Uhub/Blade.rim_speed_max*100:.2f}%")
-    # print(np.rad2deg(alpha3s))
+    # fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
     # root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
     # axs[0].set_title("Root reaction")
     # plt.colorbar(root_plot, ax=axs[0])
@@ -898,6 +922,20 @@ if __name__ == "__main__":
     # axs[1].grid()    
     # plt.colorbar(tip_plot, ax=axs[1])
 
+    fig, axs = plt.subplots(1,2)
+    plt.set_cmap("jet")
+
+    fig.set_size_inches(16,9)
+    fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
+    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
+    axs[0].set_title("Root reaction")
+    plt.colorbar(root_plot, ax=axs[0])
+    
+    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
+    axs[1].set_title("Tip reaction")
+    axs[0].grid()
+    axs[1].grid()    
+    plt.colorbar(tip_plot, ax=axs[1])
 
     # fig2, axs = plt.subplots(1,2)
     # fig2.set_size_inches(16,9)
