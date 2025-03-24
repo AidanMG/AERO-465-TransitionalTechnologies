@@ -578,7 +578,6 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
         AN2s (_type_): _description_
         Uhubs (_type_): _description_
         Rs (_type_): _description_
-        NUM (int, optional): _description_. Defaults to 100.
     """
 
     # Static conditions at outlet, from computed total conditions in Part A, with meshgrid
@@ -590,7 +589,7 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
 
     # Velocity triangle at 3, absolute
     V3s = Ma3s*sound(T3s)
-    Va3s = V3s*np.cos(alpha3s)    
+    Va3s = V3s*np.cos(alpha3s)
     Vt3s = V3s*np.sin(alpha3s)
 
     # Area from continuity, using total flow across blade (not including blade bleed air)
@@ -656,49 +655,72 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
 
     return  ({
+        #Conditions at 1
         "P1": P1,
+        "P01": Conditions.P01,
         "T1": T1,
-        "A1": A1,
+        "T01": Conditions.T01,
         "rho1": rho1,
         "Va1": Va1,
-        "rho2s": rho2s,
-        "rho3s": rho3s,
-        "T3s":T3s,
-        "P3s":P3s,
-        "V3s":V3s,
-        "Va3s":Va3s,
-        "Va2s": Va2s,
-        "Vt3s":Vt3s,
-        "A3s":A3s,
-        "RPMs":RPMs,
-        "rhs":rhs,
-        "rts":rts,
-        "rms":rms,
-        "Ums":Ums,
-        "Vt3_rels":Vt3_rels,
-        "alpha3_rels":alpha3_rels,
-        "V3_rels":V3_rels,
-        "T2s":T2s,
-        "M2s":M2s,
-        "V2s":V2s,
-        "alpha2s":alpha2s,
-        "alpha2_rels":alpha2_rels,
-        "V2_rels":V2_rels,
+        "V1": V1,   
+        "A1": A1,
+        # Conditions at 2
         "P2s":P2s,
         "P02s":P02s,
-        "Yps":Yps,
-        "Ma3_rels":Ma3_rels,
-        "P03_rels":P03_rels,
-        "T03_rels":T03_rels,
+        "T2s":T2s,
+        "T02s": Conditions.T02,
+        "rho2s": rho2s,
+        "Va2s": Va2s,   
+        "Vt3s":Vt3s,
+        "V2s":V2s,      
+        "M2s":M2s,
+        
+        # Relative contitions at 2
+        "V2_rels":V2_rels,
         "Ma2_rels":Ma2_rels,
         "P02_rels":P02_rels,
         "T02_rels":T02_rels,
+        
+        
+        # Conditions at 3
+        "P3s":P3s,
+        "P03s": Conditions.P03,
+        "T3s":T3s,
+        "T03s": Conditions.T03,
+        "rho3s": rho3s,
+        "Va3s":Va3s,
+        "Vt3s": Vt3s,
+        "V3s":V3s,
+        "A3s":A3s,
+        "Ma3s": Ma3s,
+        
+        # Relative conditions at 3
+        "P03_rels":P03_rels,
+        "T03_rels":T03_rels,
+        "V3_rels":V3_rels,              
+        "Vt3_rels":Vt3_rels,
+        "Ma3_rels":Ma3_rels,
+
+        
+        # Blade angles and geometry
+        "alpha1": Stage.swirl_in,
+        "alpha2s":alpha2s,        
+        "alpha2_rels":alpha2_rels,        
+        "alpha3_rels":alpha3_rels,
+        "alpha3s": alpha3s,
+        "rhs":rhs,
+        "rts":rts,
+        "rms":rms,
+        
+        # Cycle characteristics
+        "RPMs":RPMs,
+        "Ums":Ums,        
+        "Yps":Yps,        
         "Yp_rels":Yp_rels,
-    }, {
-        "T1": T1,
+        "Rs": Rs      
+
     })
 
-import numpy as np
 
 def yield_subgrids(arrays, axes, indices, values):
     """
@@ -734,19 +756,28 @@ def yield_subgrids(arrays, axes, indices, values):
     
     return subgrids
 
+def pretty_print(d):
+    print("{")
+    for key in d:
+        if "alpha" in key:
+            print(f"\t{key}:\t{np.rad2deg(d[key]):.4f} deg")
+        else:
+            print(f"\t{key}:\t{d[key]:.4f}")
+    print("}")
+
 if __name__ == "__main__":
         
-    var_dict, const_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.6)
-    V1 = Stage.M_in*sound(const_dict["T1"])
+    var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
+    V1 = var_dict["V1"]
     
-    print(var_dict)
+    pretty_print(var_dict)
     final_mean_triangle = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], np.deg2rad(35), var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     # print(final_mean_triangle)
 
     xs = np.linspace(0,2,5)
     ys = np.linspace(0,2,5)
     xs, ys = np.meshgrid(xs, ys)
-    
+    quit()
     # #### SECTION 1 ####
     # # Midspan velocity triangles
     
@@ -897,8 +928,8 @@ if __name__ == "__main__":
     # T02_rels = T3s * temperature_ratio(Ma2_rels)
 
     # Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
-    var_dict, const_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
-    V1 = Stage.M_in*sound(const_dict["T1"])
+    var_dict= new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
+    V1 = var_dict["V1"]
 
     Yps = var_dict["Yps"]
     Yp_rels = var_dict["Yp_rels"]
