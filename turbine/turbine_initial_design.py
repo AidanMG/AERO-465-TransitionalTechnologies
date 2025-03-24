@@ -615,6 +615,12 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     ## Solving for Conditions at 2:
     # T1 is constant
     T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
+    P1 = Conditions.P01/(pressure_ratio(Stage.M_in)) # Pressure at 1 also
+
+    V1 = Stage.M_in * sound(T1)
+    Va1 = V1*np.cos(Stage.swirl_in)
+    rho1 = 1000 * P1 / (R_air*T1)
+    A1 =  Conditions.mdot_5 / (rho1 *  Va1)
     
     # Temperature-based reaction
     T2s = T3s + (T1 - T3s)*Rs 
@@ -647,14 +653,21 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     T02_rels = T2s * temperature_ratio(Ma2_rels)
 
     # Estimated pressure loss coefficient obtained from the assumptions, across the blades
-    Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)    
-
+    Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
 
     return  ({
+        "P1": P1,
+        "T1": T1,
+        "A1": A1,
+        "rho1": rho1,
+        "Va1": Va1,
+        "rho2s": rho2s,
+        "rho3s": rho3s,
         "T3s":T3s,
         "P3s":P3s,
         "V3s":V3s,
         "Va3s":Va3s,
+        "Va2s": Va2s,
         "Vt3s":Vt3s,
         "A3s":A3s,
         "RPMs":RPMs,
