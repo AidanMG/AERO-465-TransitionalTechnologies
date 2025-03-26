@@ -2,7 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
 from scipy import interpolate as intp
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, least_squares
 
 
 # Conversion constants
@@ -630,7 +630,7 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     Vt2s =  Conditions.w / Ums - Vt3s
     alpha2s = np.arcsin(Vt2s/V2s)
     Vt2_rels = Vt2s - Ums
-    alpha2_rels = np.arcsin(Vt2_rels/V2s)  
+    alpha2_rels = np.arcsin(Vt2_rels/V2s)
 
     Va2s = np.cos(alpha2s)*V2s  
     V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
@@ -765,111 +765,95 @@ def pretty_print(d):
             print(f"\t{key}:\t{d[key]:.4f}")
     print("}")
 
+
+def computation_from_losses():
+    # Params for later: (Yp, Yr, M3, alpha3, AN2, Uhub, RPM, area_ratio)
+    Uhub = 0.95*Blade.rim_speed_max
+    AN2 = 0.95*Blade.AN2_max
+    RPM = 29000
+    Yp = 0.3
+    Yr = 0.3
+    M3 = 0.55
+    alpha3 = np.deg2rad(30)
+    
+    Um = 0.5*Uhub + np.sqrt(np.pi*AN2/3600 +Uhub**2 / 4)
+    A2 = AN2 / (RPM**2)
+
+    T1 = Conditions.T01/temperature_ratio(Stage.M_in)
+    P1 = Conditions.P01/pressure_ratio(Stage.M_in)
+    rho1 = 1000 * P1 / (R_air*T1) 
+    Va1 = Stage.M_in * sound(T1) * np.cos(Stage.swirl_in)
+    A1 = Conditions.mdot_5 / (rho1 * Va1) 
+    
+    # Useful equations/constants to plug into the sovler
+    mdot_1 = Conditions.mdot_5
+    mdot_2 = lambda M2, alpha2: 1000*Conditions.P01 * np.sqrt(1.333/(R_air*Conditions.T02)) * ((temperature_ratio(M2))**(0.5) / pressure_ratio(M2)) / \
+        ( 1 + Yp * (1 - 1/pressure_ratio(M2))) * M2 * np.cos(alpha2) * A2
+    
+    continuity_12 = lambda M2, alpha2: mdot_1 + \
+        (Conditions.mdot_5i - Conditions.mdot_5) - \
+        mdot_2(M2, alpha2)
+        
+    P03_from_relative = lambda M2, M2r, M3r: 1000*Conditions.P01 * \
+        (pressure_ratio(M3)) / ((1 + Yr) * (1 + pressure_ratio(M3r))) * (pressure_ratio(M2r)/pressure_ratio(M3r)) * \
+        ( 1 + Yp * (1 - 1/pressure_ratio(M2)))
+        
+    mdot_3 = lambda M2, M2r, M3r: P03_from_relative(M2, M2r, M3r) * \
+        np.sqrt(1.333/(R_air*Conditions.T03)) * ((temperature_ratio(M3))**(0.5) / pressure_ratio(M3)) * \
+        M3 * np.cos(alpha3) * A2
+        
+    continuity_23 = lambda M2, M2r, alpha2, M3r: mdot_2(M2, alpha2) - mdot_3(M2, M2r, M3r)
+    
+    # Finding an expression for M3r wrt Work Equation
+    Vt2 = lambda M2, alpha2: M2*np.sin(alpha2) * sound(Conditions.T02_mix/temperature_ratio(M2))
+    Vt3 = lambda M2, alpha2: Conditions.w / Um - Vt2(M2, alpha2)
+    
+    Va2 = lambda M2, alpha2: M2 * np.cos(alpha2) * sound(Conditions.T02_mix/temperature_ratio(M2))
+    Va3 = M3 * np.cos(alpha3) * sound(Conditions.T03 / temperature_ratio(M3))
+    
+    V2r = lambda M2, alpha2: np.sqrt( (Vt2(M2, alpha2) - Um) **2 + Va2(M2, alpha2) ** 2)
+    V3r = lambda M2, alpha2: np.sqrt( (Vt3(M2, alpha2) + Um) ** 2 + Va3 ** 2)
+    
+    M2r_from_work = lambda M2r, M2, alpha2 : M2r - V2r(M2, alpha2) / sound(Conditions.T02_mix/temperature_ratio(M2))
+    M3r_from_work = lambda M3r, M2, alpha2 : M3r - V3r(M2, alpha2) / sound(Conditions.T03/temperature_ratio(M3))
+    
+    
+    equation_vector = lambda M2, M2r, M3r, alpha2: [
+        continuity_12(M2, alpha2),
+        continuity_23(M2, M2r, alpha2, M3r),
+        M2r_from_work(M2r, M2, alpha2),
+        M3r_from_work(M3r, M2, alpha2)
+    ]
+    equation_vector_packaged = lambda args: equation_vector(args[0], args[1], args[2], args[3])
+    # result_vector = least_squares(equation_vector_packaged, [1,1,1,1], bounds=((0,0,0,0), (1,1.5,1,np.pi)), ftol=None, xtol=None, max_nfev=1e4, jac='3-point')
+    # result_vector.x
+    # print(result_vector)
+    # print(equation_vector_packaged(result_vector.x))
+    result_vector = fsolve(equation_vector_packaged, [0,0.5,0.5,0], full_output=True)
+    print(result_vector[0])
+    print(np.rad2deg(result_vector[0][3] % (2*np.pi)))
+    
+    return result_vector
+
 if __name__ == "__main__":
         
+    # var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
+    
     V1 = var_dict["V1"]
     
     pretty_print(var_dict)
+    quit()
     final_mean_triangle = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], np.deg2rad(35), var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     # print(final_mean_triangle)
 
     xs = np.linspace(0,2,5)
     ys = np.linspace(0,2,5)
     xs, ys = np.meshgrid(xs, ys)
-    quit()
-    # #### SECTION 1 ####
-    # # Midspan velocity triangles
-    
-    # # Step 1: analysing reasonable ranges of flow coefficients and reactions to find our bounds
-    # # flow_coeffs = np.arange(0.55,0.65, 0.001) # Phi
-    # # reactions = np.arange(0.4,0.5,0.001) # Reaction
-    # ## Velocity Ratio of 2.279 obtained form hand calcs as reasonable value
-    # # analyze_triangle_range(flow_coeffs, reactions, 2.279)
-
-    # # print(get_midspan_velocity_triangles(0.6,0.45))
-    # T1_avg = Conditions.T01/temperature_ratio(Stage.M_in)
-    # P1 = Conditions.P01/pressure_ratio(Stage.M_in)
-    # V1_avg = Stage.M_in*sound(T1_avg)
-    # A1 = (T1_avg*Conditions.mdot_5)/(V1_avg*P1)
-    # RPM = np.sqrt(Blade.AN2_max*0.95/(A1/1.4))  
-    
-    
-    # # These initial triangles are incorrect, they assume incompressible flow....
-    # triangle_midspan = get_midspan_velocity_triangles(0.6, 0.48, 2.279)
-    # rh, rt = get_blade_from_RPM(RPM, rim_speed=Blade.rim_speed_max*0.95, AN2 = Blade.AN2_max*0.95)
-    # rm = (rh + rt)/2
-    
-    
-
-    # rim_speeds = np.linspace(Blade.rim_speed_max*0.80, Blade.rim_speed_max, 100) # Rim speed needs to stay as high as possible
-    # an2s = np.linspace(Blade.AN2_max*0, Blade.AN2_max, 100)
-    # # plot_triangle_reaction_ranges(triangle_midspan, 20000, rim_speeds, an2s)
-
-    
-    # triangle_root = get_offset_triangle(triangle_midspan, rm, rh)
-    # triangle_tip = get_offset_triangle(triangle_midspan, rm, rt)
-    
-    # print(triangle_root, triangle_midspan, triangle_tip, sep='\n'+50*'-'+'\n')
-    # NUM = 11
-    # vane_angles, blade_angles = angle_grid(triangle_midspan, triangle_root, triangle_tip, NUM)
-    
-    # Yp=0.1
-    # AR=1.4
-    
-
-        
-    
-    # M1s = np.full_like(vane_angles,Stage.M_in) # Filled grid of M1 values
-    # alpha1s = np.full_like(vane_angles, triangle_midspan.alpha1) # Filled grid of alpha1 values
-    # Yps = np.linspace(0, Yp, num=NUM, endpoint=True) # Filled list of Yp values, assuming Yp linearly varies from 0 to max loss
-    # Yps, _ = np.meshgrid(Yps, Yps) # Made into grid, loss increasing in chord
-    
-    # ARs = np.linspace(1,AR,num=NUM, endpoint=True) # Filled list of area ratio values, assuming AR varies linearly from 0 to max
-    # ARs, _ = np.meshgrid(ARs, ARs) # Made into grid, AR increasing in chord
-    
-    # ys = np.linspace(0,1,NUM, endpoint=True)
-    # T01s = Conditions.T01_var(ys)
-    # _, T01s = np.meshgrid(T01s, T01s)
-    # condition_array = full_solver(M1s, alpha1s, ARs, vane_angles, Yps, T01s)
-    # condition_plotter(*condition_array, "Absolute Conditions along Vanes")
-
-    # M2s, V2s, T2s, T02s, P2s, P02s = extract_final_conds(condition_array)
-
-    # Rs = np.linspace(rh, rt, NUM, endpoint=True)
-    # Us = RPM*(2*np.pi)/60 * Rs
-    # # print(Us)
-
-    # M2rs, V2rs, Trs, T0rs, Prs, P0s = relativizer(Us, vane_angles.T[-1], blade_angles.T[-1], M2s, V2s, T02s, T2s, P02s, P2s)
-    
-    
-    # M2rs, T0rs  = gridifier(M2rs, T0rs)
-    # # print(M2rs)
-    # alpha2rs = blade_angles[0]
-    # alpha2rs, _ = np.meshgrid(alpha2rs, alpha2rs)
-    # ARs = np.full_like(blade_angles, 1)
-    # condition_array = full_solver(M2rs, alpha2rs, ARs, blade_angles, Yps, T0rs)
-    # # print(condition_array)
-    # M3s, V3s, T3s, T03s, P3s, P03s = extract_final_conds(condition_array)
-
-    
-
-    # alpha3_t, alpha3_r = triangle_tip.alpha3, triangle_root.alpha3
-    # alpha_r3t, alpha_r3r = triangle_tip.alpha_r3, triangle_root.alpha_r3
-    # alpha3s = np.linspace(alpha3_r, alpha3_t, NUM, endpoint=True)
-    # alpha_r3s = np.linspace(alpha_r3r, alpha_r3t, NUM, endpoint=True)
-
-    # # Try un-relativizing everything
-    # M3s, V3s, T3s, T03s, P3s, P03s = relativizer(Us, alpha_r3s, alpha3s, M3s, V3s, T03s, T3s, P03s, P3s, direction = -1)
-
-    # condition_array = [M3s, V3s, T3s, T03s, P3s, P03s]
-
-    # print(T03s)
-
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 20
+    NUM = 100
 
     # Assume based on Ma3 and Alpha3s
     Ma3 = np.linspace(Stage.M_out_min, Stage.M_out_max*1.0, NUM, endpoint=True)
@@ -880,59 +864,19 @@ if __name__ == "__main__":
     # Manual setpoints
     # AN2 = Blade.AN2_max * 0.95
     # Uhub = Blade.rim_speed_max * 0.95
-    AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 20, endpoint=True)
-    Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 20, endpoint=True)
+    AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 5, endpoint=True)
+    Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 5, endpoint=True)
 
-    Rs = np.linspace(0.4, 0.7, 10, endpoint=True) # Assume a reaction
+    Rs = np.linspace(0.4, 0.7, 30, endpoint=True) # Assume a reaction
     Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
-    # # Blade velocities at meanline
-    # Ums = RPMs * (2*np.pi / 60) * rms
-
-    # Vt3_rels = Vt3s + Ums
-
-    # alpha3_rels = np.atan2(Vt3_rels, Va3s)
-    # V3_rels = np.sqrt(Vt3_rels**2 + Va3s **2)
-
-
-    # ## Solving for Conditions at 2:
-    # T1 = Conditions.T01/(temperature_ratio(Stage.M_in)) # Get your temperatures
-    
-    # T2s = T3s + (T1 - T3s)*R # 
-    # M2s = np.sqrt(2*((Conditions.T02/T2s)-1)/(0.333))
-    # V2s = M2s * sound(T2s)
-
-    # Vt2s =  Conditions.w / Ums - Vt3s
-    # alpha2s = np.arcsin(Vt2s/V2s)
-    # Vt2_rels = Vt2s - Ums
-    # alpha2_rels = np.arcsin(Vt2_rels/V2s)  
-
-    # Va2s = np.cos(alpha2s)*V2s  
-    # V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
-
-    # rho2s = Conditions.mdot_5i / (V2s*np.cos(alpha2s) * A3s)
-
-    # P2s = rho2s * R_air * T2s / 1000
-    # P02s = P2s * pressure_ratio(M2s)
-
-
-    # Yps = (Conditions.P01 - P02s)/(P02s - P2s)
-
-    # Ma3_rels = sound(T3s) / V3_rels
-    # P03_rels = P3s * pressure_ratio(Ma3_rels)
-    # T03_rels = T3s * temperature_ratio(Ma3_rels)
-
-    # Ma2_rels = sound(T2s) / V2_rels
-    # P02_rels = P3s * pressure_ratio(Ma2_rels)
-    # T02_rels = T3s * temperature_ratio(Ma2_rels)
-
-    # Yp_rels = (P02_rels - P03_rels) / (P03_rels - P3s)
     var_dict= new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
     V1 = var_dict["V1"]
 
     Yps = var_dict["Yps"]
     Yp_rels = var_dict["Yp_rels"]
+    alpha2s = var_dict["alpha2s"]
 
     mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
@@ -950,14 +894,14 @@ if __name__ == "__main__":
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
-    data = [Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s, alpha3s]
+    data = [Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s, alpha3s, alpha2s]
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
-    AN2_val = 0.95*Blade.AN2_max
+    AN2_val = 0.90*Blade.AN2_max
     U_val = 0.95*Blade.rim_speed_max
-    R_val = 0.6
+    R_val = 0.60
 
-    Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
+    Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s, alpha2s = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
 
     # fig, axs = plt.subplots(1,2)
     # plt.set_cmap("jet")
@@ -979,15 +923,26 @@ if __name__ == "__main__":
 
     fig.set_size_inches(16,9)
     fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
-    root_plot = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
-    axs[0].set_title("Root reaction")
-    plt.colorbar(root_plot, ax=axs[0])
     
-    tip_plot = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), R_tips, levels=NUM)
-    axs[1].set_title("Tip reaction")
+    
+    plt1 = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), np.rad2deg(alpha2s), levels=NUM)
+    axs[0].set_title("alpha2s")
+    cbar1 = plt.colorbar(plt1, ax=axs[0])
+    
+    plt2 = axs[1].contourf(Ma3s, np.rad2deg(alpha3s), np.sign(np.sign(Yps)+np.sign(Yp_rels)), levels=1)
+    axs[1].set_title("Yp")
+    plt.colorbar(plt2, ax=axs[1])
+    
+    
+    # plt3 = axs[2].contourf(Ma3s, np.rad2deg(alpha3s), np.sign(Yp_rels), levels=1)
+    # axs[2].set_title("Yp_rel")
+    # plt.colorbar(plt3, ax=axs[2])
+    
+    
     axs[0].grid()
-    axs[1].grid()    
-    plt.colorbar(tip_plot, ax=axs[1])
+    axs[1].grid()
+    # axs[2].grid()       
+     
 
     # fig2, axs = plt.subplots(1,2)
     # fig2.set_size_inches(16,9)
