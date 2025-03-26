@@ -766,15 +766,8 @@ def pretty_print(d):
     print("}")
 
 
-def computation_from_losses():
+def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
     # Params for later: (Yp, Yr, M3, alpha3, AN2, Uhub, RPM, area_ratio)
-    Uhub = 0.95*Blade.rim_speed_max
-    AN2 = 0.95*Blade.AN2_max
-    RPM = 29000
-    Yp = 0.3
-    Yr = 0.3
-    M3 = 0.55
-    alpha3 = np.deg2rad(30)
     
     Um = 0.5*Uhub + np.sqrt(np.pi*AN2/3600 +Uhub**2 / 4)
     A2 = AN2 / (RPM**2)
@@ -830,20 +823,28 @@ def computation_from_losses():
     # print(result_vector)
     # print(equation_vector_packaged(result_vector.x))
     result_vector = fsolve(equation_vector_packaged, [0,0.5,0.5,0], full_output=True)
-    print(result_vector[0])
-    print(np.rad2deg(result_vector[0][3] % (2*np.pi)))
-    
-    return result_vector
+    M2, Mr2, Mr3, alpha2 = result_vector[0]
+    alpha2 = alpha2 % (2*np.pi)
+    return M2, Mr2, Mr3, alpha2
 
 if __name__ == "__main__":
-        
+    
+    # Testing solver integrated with Yps    
+    # Uhub = 0.95*Blade.rim_speed_max
+    # AN2 = 0.95*Blade.AN2_max
+    # RPM = 24000
+    # Yp = 0.36
+    # Yr = 0.2836
+    # M3 = 0.55
+    # alpha3 = np.deg2rad(33)    
+    # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
+    # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
     # var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     
     V1 = var_dict["V1"]
     
     pretty_print(var_dict)
-    quit()
     final_mean_triangle = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], np.deg2rad(35), var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     # print(final_mean_triangle)
 
