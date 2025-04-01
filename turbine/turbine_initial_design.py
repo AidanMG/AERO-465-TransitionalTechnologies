@@ -630,7 +630,8 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     Vt2s =  Conditions.w / Ums - Vt3s
     alpha2s = np.arcsin(Vt2s/V2s)
     Vt2_rels = Vt2s - Ums
-    alpha2_rels = np.arcsin(Vt2_rels/V2s)
+    Va2s = np.cos(alpha2s)*V2s
+    alpha2_rels = np.atan2(Vt2_rels, Va2s )
 
     Va2s = np.cos(alpha2s)*V2s  
     V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
@@ -671,12 +672,13 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
         "T02s": Conditions.T02,
         "rho2s": rho2s,
         "Va2s": Va2s,   
-        "Vt3s":Vt3s,
+        "Vt2s":Vt2s,
         "V2s":V2s,      
         "M2s":M2s,
         
         # Relative contitions at 2
         "V2_rels":V2_rels,
+        "Vt2_rels": Vt2_rels,
         "Ma2_rels":Ma2_rels,
         "P02_rels":P02_rels,
         "T02_rels":T02_rels,
@@ -840,11 +842,13 @@ if __name__ == "__main__":
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
     # var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
-    var_dict1 = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
+    var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     
     V1 = var_dict1["V1"]
     
     pretty_print(var_dict1)
+    print(var_dict1["RPMs"])
+    # quit()
     final_mean_triangle = VelocityTriangle(var_dict1["Ums"], V1, var_dict1["V2s"], var_dict1["V3s"], Stage.swirl_in, var_dict1["alpha2s"], np.deg2rad(35), var_dict1["alpha2_rels"], var_dict1["alpha3_rels"])
     # print(final_mean_triangle)
     final_root_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rhs'])
@@ -859,7 +863,10 @@ if __name__ == "__main__":
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
     Mrel2_hub = V2_rel / sound(Conditions.T02_mix/temperature_ratio(M2_root1))
     print(f"!!{Mrel2_hub}")
-    quit()
+    print(f"Meanline = {final_mean_triangle}")
+    print(f"Root = {final_root_triangle}")
+    print(f"Tip = {final_tip_triangle}")
+    # quit()
   
     xs = np.linspace(0,2,5)
     ys = np.linspace(0,2,5)
@@ -867,30 +874,31 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 100
+    NUM = 50
 
     # Assume based on Ma3 and Alpha3s
-    Ma3 = np.linspace(0.4, Stage.M_out_max*1.0, NUM, endpoint=True)
-    alpha3 = np.linspace(np.deg2rad(25), Stage.swirl_out_max*1.0, NUM, endpoint=True)
+    Ma3 = np.linspace(0.5, Stage.M_out_max*1.0, NUM, endpoint=True)
+    alpha3 = np.linspace(np.deg2rad(35), Stage.swirl_out_max*1.0, NUM, endpoint=True)
     # Ma3 = np.array([0.55])
     # alpha3 = np.array([np.deg2rad(35)])
 
     # Manual setpoints
     # AN2 = Blade.AN2_max * 0.95
     # Uhub = Blade.rim_speed_max * 0.95
-    AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 5, endpoint=True)
-    Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 5, endpoint=True)
+    AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 20, endpoint=True)
+    Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 20, endpoint=True)
 
     Rs = np.linspace(0.4, 0.7, 30, endpoint=True) # Assume a reaction
     Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
-    var_dict= new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
+    var_dict = new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs)
     V1 = var_dict["V1"]
 
     Yps = var_dict["Yps"]
     Yp_rels = var_dict["Yp_rels"]
     alpha2s = var_dict["alpha2s"]
+    RPMs = var_dict["RPMs"]
 
     mean_tris = VelocityTriangle(var_dict["Ums"], V1, var_dict["V2s"], var_dict["V3s"], Stage.swirl_in, var_dict["alpha2s"], alpha3s, var_dict["alpha2_rels"], var_dict["alpha3_rels"])
     root_tris = get_offset_triangle(mean_tris, var_dict["rms"], var_dict["rhs"])
@@ -908,14 +916,14 @@ if __name__ == "__main__":
     # # M2_roots = np.where(M2_roots < 1, M2_roots, np.nan)
     # # Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips = NANify(Ums, V2s, V3s, alpha2s, alpha2_rels, alpha3_rels, P02s, P03_rels, Yps, Yp_rels, M2_roots,  M2_tips, R_roots, R_tips)
 
-    data = [Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s, alpha3s, alpha2s]
+    data = [Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s, alpha3s, alpha2s, RPMs]
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
-    AN2_val = 0.95*Blade.AN2_max
+    AN2_val = 0.80*Blade.AN2_max
     U_val = 0.95*Blade.rim_speed_max
     R_val = 0.60
 
-    Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s, alpha2s = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
+    Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s, alpha2s, RPMs = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
 
     # fig, axs = plt.subplots(1,2)
     # plt.set_cmap("jet")
@@ -935,14 +943,16 @@ if __name__ == "__main__":
     fig, axs = plt.subplots(1,2)
     plt.set_cmap("jet")
 
-    fig.set_size_inches(16,9)
+    fig.set_size_inches(9,4)
     fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
     
     Yps = np.where(Yps > 0, Yps, np.nan)
     Yp_rels = np.where((Yp_rels > 0)&(Yp_rels < 5), Yp_rels, np.nan)
     Yps = np.where(np.isnan(Yp_rels), np.nan, Yps)
     Yp_rels = np.where(np.isnan(Yps), np.nan, Yp_rels)
-    
+    RPMs = np.where(np.isnan(Yps), np.nan, RPMs)
+    M2_roots = np.where(np.isnan(Yps), np.nan, M2_roots)
+    R_roots = np.where(np.isnan(M2_roots), np.nan, R_roots)
     
     plt1 = axs[0].contourf(Ma3s, np.rad2deg(alpha3s), Yps, levels=NUM)
     axs[0].set_title("Yp")
@@ -955,11 +965,10 @@ if __name__ == "__main__":
     cbar2.ax.plot([0,1], [var_dict1["Yp_rels"], var_dict1["Yp_rels"]], 'r')
 
     fig2, axs2 = plt.subplots(1,2)
-    fig2.set_size_inches(16,9)
+    fig2.set_size_inches(9,4)
     plt.set_cmap("jet")
 
-    fig.set_size_inches(16,9)
-    fig.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
+    fig2.suptitle(f"R={R_val}, AN^2={AN2_val/Blade.AN2_max*100:.2f}%, Uhub={U_val/Blade.rim_speed_max*100:.2f}%")
     
     plt3 = axs2[0].contourf(Ma3s, np.rad2deg(alpha3s), R_roots, levels=NUM)
     axs2[0].set_title("Rroot")
@@ -981,10 +990,13 @@ if __name__ == "__main__":
     axs[1].grid()
     axs2[0].grid()
     axs2[1].grid()
+    mval, tval = 0.52, 39
     for ax in list(axs) + list(axs2):
-        ax.vlines(0.55, 25, 33, 'r', linestyle="dashed")
-        ax.hlines(33, 0.40, 0.55, 'r', linestyle="dashed")
-        ax.plot(0.55, 33, 'ro')
+        ax.set_xlabel("M3")
+        ax.set_ylabel("alpha3 (deg)")
+        ax.vlines(mval, 35, tval, 'r', linestyle="dashed")
+        ax.hlines(tval, 0.50, mval, 'r', linestyle="dashed")
+        ax.plot(mval, tval, 'ro')
         
     # axs[2].grid()
      
