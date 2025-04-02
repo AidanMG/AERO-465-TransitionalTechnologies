@@ -9,6 +9,7 @@ from scipy.optimize import fsolve, least_squares
 in_to_mm = 25.4
 ft_to_m = in_to_mm*12/1000
 Cp_g = 1148 #J/kgK
+Cp_air = 1005
 R_air = 287
 
 # Container class for complete velocity triangle information for all stages
@@ -265,7 +266,6 @@ def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
         ax.set_ylabel("R")
 
 def get_pressures(V1, P01, alphas, ARs):
-
     pass
 
 def get_temperatures(V1, T01, alphas, ARs):
@@ -460,7 +460,6 @@ def condition_plotter(M2s, V2s, T2s, T02s, P2s, P02s, title=None):
         ax.set_xlabel("x/c")
         ax.set_ylabel("y/b")
     pass
-    
 
 def angle_grid(midspan:VelocityTriangle, root:VelocityTriangle, tip:VelocityTriangle, num, plot=False):
     # Grid of x and y coordinates, relative to span and chord length
@@ -470,7 +469,7 @@ def angle_grid(midspan:VelocityTriangle, root:VelocityTriangle, tip:VelocityTria
     # Reference coordinates
     x_ref = np.array([0,1]) # Leading and Trailing edge
     y_ref = np.array([0,0.5,1]) # Root, Midspan, Tip
-    # Angles for vane (NOTE: Need to specify midspan for alpha1, since the velocity triangle process )
+    # Angles for vane (NOTE: Need to specify midspan for alpha1, since the velocity triangle process)
     z_ref = np.array([
             [midspan.alpha1, root.alpha2],
             [midspan.alpha1, midspan.alpha2],
@@ -623,7 +622,7 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     
     # Temperature-based reaction
     T2s = T3s + (T1 - T3s)*Rs 
-    M2s = np.sqrt(2*((Conditions.T02/T2s)-1)/(0.333))
+    M2s = np.sqrt(2*((Conditions.T02_mix/T2s)-1)/(0.333))
     V2s = M2s * sound(T2s)
 
     # Tangential velocity at 2
@@ -637,6 +636,7 @@ def new_method_midspan(Ma3s, alpha3s, AN2s, Uhubs, Rs):
     V2_rels = np.sqrt(Vt2_rels**2 + Va2s **2)
 
     rho2s = Conditions.mdot_5i / (V2s*np.cos(alpha2s) * A3s)
+    
 
     P2s = rho2s * R_air * T2s / 1000
     P02s = P2s * pressure_ratio(M2s)
@@ -758,15 +758,102 @@ def yield_subgrids(arrays, axes, indices, values):
     
     return subgrids
 
-def pretty_print(d):
-    print("{")
+def pretty_print(d, headers=0):
+    print(headers*"\t" + "{")
     for key in d:
-        if "alpha" in key:
-            print(f"\t{key}:\t{np.rad2deg(d[key]):.4f} deg")
+        if type(d[key]) == dict:
+            print((headers+1)*"\t" + f"{key}: ")
+            pretty_print(d[key], headers=headers+1)
+        elif "alpha" in key:
+            print((headers+1)*"\t" + f"{key}:\t{np.rad2deg(d[key]):.4f} deg")
         else:
-            print(f"\t{key}:\t{d[key]:.4f}")
-    print("}")
+            print((headers+1)*"\t" + f"{key}:\t{d[key]:.4f}")
+    print(headers*"\t" + "}")
 
+def off_design(RPM, rm, V2, alpha2, beta2, alpha3_r, dP_rel, T2, P2, A3, V3r_actual):
+    """Get the off-design values from RPM, conditions at 2, and relative pressure drop across blade
+    
+    KEY ASSUMPTIONS: Relative pressure drop from 2-3 remains the same (dP_rel = dP_rel (design point))
+    Absolute flow properties at 2 are completely unaffected (T2=T2 (design), P2 = P2(design)) since the vane is unchanged by changing RPM
+
+    Args:
+        RPM (_type_): _description_
+        rm (_type_): _description_
+        V2 (_type_): _description_
+        alpha2 (_type_): _description_
+        beta2 (_type_): _description_
+        alpha3_rel (_type_): _description_
+        dP_rel (_type_): _description_
+    """
+    # Absolute and relative velocities at 2
+    Um = RPM * (np.pi/30) * rm
+    V2t = V2*np.sin(alpha2)
+    V2t_r = V2t - Um
+    V2a = V2*np.cos(alpha2)
+    V2r = np.sqrt(V2t_r**2 + V2a**2)
+    alpha2_r = np.atan2(V2t_r, V2a)
+    incidence = alpha2_r - beta2
+    
+    # Relative flow properties at 2
+    M2r = V2r / sound(T2)
+    P02_rel = pressure_ratio(M2r)*P2
+    T02_rel = temperature_ratio(M2r)*T2
+    
+    # DERIVATION:
+    P03_rel = P02_rel - dP_rel
+
+    
+    #  rho3 * Va3 * A3 - mdot2 = 0
+    continuity_eq = lambda v3r: (1000*P03_rel * (1 - (v3r**2) / (2*Cp_g*T2 + V2r**2)) ** (1.333/0.333)) / \
+            ( R_air * (T2 + (V2r**2 - v3r**2) / (2*Cp_g)) ) * \
+                (v3r * np.cos(alpha3_r)) * A3 - Conditions.mdot_5i
+
+
+    V3r = fsolve(continuity_eq, V3r_actual,maxfev=1000)[0]
+    T3 = T02_rel - V3r**2/(2*Cp_g)
+    M3r = np.sqrt(2*(T02_rel/T3 - 1) / (0.333))
+    P3 = P03_rel / (pressure_ratio(M3r))
+    
+
+    # print(1000*P03_rel * (1 - (V3r**2) / (2*Cp_g*T2 + V2r**2)) ** (1.333/0.333)) / \
+    #         ( R_air * (T2 + (V2r**2 - V3r**2) / (2*Cp_g)))
+            
+    
+    alpha3 = np.atan(np.tan(alpha3_r) - Um/(V3r*np.cos(alpha3_r)))
+    V3 = V3r * np.cos(alpha3_r) / np.cos(alpha3)
+    
+    M3 = V3 / sound(T3)
+    
+    T03 = T3 * temperature_ratio(M3)
+    P03 = P3 * temperature_ratio(M3)
+    
+    work = -1 * Cp_g * (T03 - Conditions.T02_mix) / 1000
+    
+    return {
+        "Conditions at 2":{
+            "alpha2": alpha2,
+            "alpha2_r": alpha2_r,
+            "V2r": V2r,
+            "M2r": M2r,
+            "P02_rel": P02_rel,
+            "T02_rel": T02_rel   
+        },
+        "Conditions at 3": {
+            "alpha3": alpha3,
+            "alpha3_r": alpha3_r,
+            "V3r": V3r,
+            "M3r": M3r,
+            "T3": T3,
+            "P3": P3,
+            "T03": T03,
+            "P03": P03,
+            "sp.work": work
+        }
+
+        
+        
+        
+    }
 
 def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
     # Params for later: (Yp, Yr, M3, alpha3, AN2, Uhub, RPM, area_ratio)
@@ -829,8 +916,9 @@ def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
     alpha2 = alpha2 % (2*np.pi)
     return M2, Mr2, Mr3, alpha2
 
+
 if __name__ == "__main__":
-    
+
     # Testing solver integrated with Yps    
     # Uhub = 0.95*Blade.rim_speed_max
     # AN2 = 0.95*Blade.AN2_max
@@ -842,13 +930,26 @@ if __name__ == "__main__":
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
     # var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
-    var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
-    
+    var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.525)
     V1 = var_dict1["V1"]
-    
+
     pretty_print(var_dict1)
-    print(var_dict1["RPMs"])
-    # quit()
+
+    rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
+
+    ret_dict = off_design(0.9*var_dict1["RPMs"],
+        rm=var_dict1["rms"],
+        V2=var_dict1['V2s'],
+        alpha2=var_dict1['alpha2s'],
+        beta2=np.deg2rad(45.0854),
+        alpha3_r=var_dict1["alpha3_rels"],
+        dP_rel = var_dict1['P02_rels'] - var_dict1['P03_rels'],
+        T2=var_dict1['T2s'],
+        P2=var_dict1["P2s"],
+        A3=var_dict1['A3s'],
+        V3r_actual=var_dict1["V3_rels"])
+    pretty_print(ret_dict)
+    
     final_mean_triangle = VelocityTriangle(var_dict1["Ums"], V1, var_dict1["V2s"], var_dict1["V3s"], Stage.swirl_in, var_dict1["alpha2s"], np.deg2rad(35), var_dict1["alpha2_rels"], var_dict1["alpha3_rels"])
     # print(final_mean_triangle)
     final_root_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rhs'])
@@ -859,15 +960,19 @@ if __name__ == "__main__":
     M2_root1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
                                final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)[1]  
     
+    
+    
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
     Mrel2_hub = V2_rel / sound(Conditions.T02_mix/temperature_ratio(M2_root1))
     print(f"!!{Mrel2_hub}")
+    print(f"Root reaction = {R_root1}")
     print(f"Meanline = {final_mean_triangle}")
     print(f"Root = {final_root_triangle}")
     print(f"Tip = {final_tip_triangle}")
-    # quit()
-  
+    quit()
+    
+    
     xs = np.linspace(0,2,5)
     ys = np.linspace(0,2,5)
     xs, ys = np.meshgrid(xs, ys)
