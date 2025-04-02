@@ -1,6 +1,8 @@
 import numpy as np
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+import matplotlib.cm as cm
 from scipy import interpolate as intp
 from scipy.optimize import fsolve, least_squares
 
@@ -297,7 +299,12 @@ def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
     M2s = V2s / sound(T2s)
     M3s = V3s / sound(T3s)
     return M1s, M2s, M3s    
-    
+
+def get_mach_offset_2(T1s, T2s, T3s, V1s, V2s, V3s):
+    M1s = V1s / sound(T1s)
+    M2s = V2s / sound(T2s)
+    M3s = V3s / sound(T3s)
+    return M1s, M2s, M3s        
 
 # def get_offset_velocity_dict(d: dict, r0, r_offset):
 #     dict2 = d.copy()
@@ -917,6 +924,78 @@ def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
     return M2, Mr2, Mr3, alpha2
 
 
+
+def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt):
+    span_fraction = np.linspace(0,1,100,endpoint=True)
+    
+    #T01 varies according to RDTF
+    T01s = Conditions.T01_var(span_fraction)
+    T1s = T01s / temperature_ratio(Stage.M_in)
+    V1s = Stage.M_in*sound(T1s) #Min is constant but V varies with temp
+    
+    # M2 varies, interpolate 
+    M2_func = intp.interp1d([0, 0.5, 1], [M2r, M2m, M2t])
+    M2s = M2_func(span_fraction)
+    
+    # Compute mixing, assuming flux is even across the entire region
+    T2_pre = T01s / temperature_ratio(M2s)
+    T2_post = (T2_pre * Cp_g * Conditions.mdot_5 + Conditions.T0_pre * Cp_air * (Conditions.mdot_5i-Conditions.mdot_5))/(Cp_g * Conditions.mdot_5i)
+    T02_post = T2_post * temperature_ratio(M2s)
+    
+    # Use rothalpy conservation for next properties
+    V2r_func = intp.interp1d([0, 0.5, 1], [V2rr, V2rm, V2rt])
+    V2rs = V2r_func(span_fraction)
+    T02rs = T2_post + V2rs**2 / (2*Cp_g)
+    
+    
+    V3r_func = intp.interp1d([0, 0.5, 1], [V3rr, V3rm, V3rt])
+    V3rs = V3r_func(span_fraction)
+    
+    T3s = T02rs - V3rs**2 / (2*Cp_g)
+    
+    xs, ys = np.meshgrid([0,1], span_fraction)
+    
+    plt.set_cmap("jet")
+    
+    fig, ax = plt.subplots(1,2)
+    fig.set_size_inches(16,9)
+    vmin = np.min(np.array([T1s, T2_pre, T2_post, T3s]).ravel())
+    vmax = np.max(np.array([T1s, T2_pre, T2_post, T3s]).ravel())
+    norm = Normalize(vmin, vmax)
+    
+    
+    vaneplot = ax[0].contourf(xs, ys, np.array([T1s, T2_pre]).T, levels=20, vmin=vmin, vmax=vmax)
+    ax[0].set_title("Vane temperature distribution")
+    ax[0].set_xlabel("chord fraction")
+    ax[0].set_ylabel("span fraction")
+    
+    bladeplot = ax[1].contourf(xs, ys, np.array([T2_post, T3s]).T, levels=20, vmin=vmin, vmax=vmax)
+    ax[1].set_title("Blade temperature distribution")
+    ax[1].set_xlabel("chord fraction")
+    ax[1].set_ylabel("span fraction")
+    
+    im = cm.ScalarMappable(norm=norm)
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Temperature (K)")
+    
+    
+    
+    
+    
+    
+    
+    
+    
+      
+    
+     
+        
+    plt.ylim(0,1)
+    plt.show()
+    
+    
+    pass
+
 if __name__ == "__main__":
 
     # Testing solver integrated with Yps    
@@ -960,7 +1039,19 @@ if __name__ == "__main__":
     M2_root1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
                                final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)[1]  
     
+    M2_tip1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
+                               final_tip_triangle.V1, final_tip_triangle.V2, final_tip_triangle.V3)[1]
     
+    root_V2r = final_root_triangle.V2 * np.cos(final_root_triangle.alpha2) / np.cos(final_root_triangle.alpha_r2)
+    tip_V2r  = final_tip_triangle.V2 * np.cos(final_tip_triangle.alpha2) / np.cos(final_tip_triangle.alpha_r2)
+
+    root_V3r = final_root_triangle.V3 * np.cos(final_root_triangle.alpha3) / np.cos(final_root_triangle.alpha_r3)
+    tip_V3r  = final_tip_triangle.V3 * np.cos(final_tip_triangle.alpha3) / np.cos(final_tip_triangle.alpha_r3)    
+        
+    temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
+                              root_V2r, var_dict1["V2_rels"], tip_V2r,
+                              root_V3r, var_dict1["V3_rels"], tip_V3r)
+    quit()    
     
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
