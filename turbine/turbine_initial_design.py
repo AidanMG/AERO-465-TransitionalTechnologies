@@ -1057,12 +1057,20 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     
     pass
 
-def efficiency_from_yps(M2, M3r, V2, V3r, Yp, Yp_rel):
+def efficiency_from_yps(M2, M3r, V2, V3r, Yp, Yp_rel, alpha_r3, rt, rm, rh):
     zeta_N = Yp / (1 + 1.333/2 * M2**2)
     zeta_R = Yp_rel / (1 + 1.333/2 * M3r**2)
+    print(zeta_N, zeta_R)
+
 
     eta_tt = 1 / (1 + ((zeta_N*V2**2 + zeta_R*V3r**2)/(2*Cp_g*(Conditions.T01 - Conditions.T03))))
-    return eta_tt
+    h = (rt - rh)
+    delta_tc = 0.01 * h
+    delta_eta_tt = 0.93 * eta_tt * (delta_tc) / (h * np.cos(alpha_r3)) * (rt/rm)
+
+
+
+    return eta_tt - delta_eta_tt
 
 if __name__ == "__main__":
 
@@ -1076,7 +1084,7 @@ if __name__ == "__main__":
     # Yp = 0.0582
     # Yr = 0.1598
     # M3 = 0.55
-    # alpha3 = np.deg2rad(35)    
+    # alpha3 = np.deg2rad(35) 
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
     var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
@@ -1084,10 +1092,15 @@ if __name__ == "__main__":
     V1 = var_dict1["V1"]
 
     pretty_print(var_dict1)
-    print(efficiency_from_yps(var_dict1["M2s"], var_dict1["Ma3_rels"],
-                              var_dict1["V2s"], var_dict1["V3_rels"],
-                              var_dict1["Yps"],var_dict1["Yp_rels"]))
 
+    Yps = np.linspace(0.02, 0.15, num=100)
+    Yp_rels = np.linspace(0.15, 0.35, num=100)
+    Yps, Yp_rels = np.meshgrid(Yps, Yp_rels)
+    eta_tts = efficiency_from_yps(var_dict1["M2s"], var_dict1["Ma3_rels"],
+                              var_dict1["V2s"], var_dict1["V3_rels"],
+                              0.0651, 0.1687, var_dict1['alpha3_rels'],
+                              var_dict1["rts"],var_dict1["rms"], var_dict1["rhs"])
+    print(eta_tts)
     quit()
     rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
 
