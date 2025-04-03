@@ -953,21 +953,25 @@ def partDq2():
     SFC = lambda dT: 3600*f_func(dT) * mdot_5 / W_net(dT)
 
 
-    dT = np.linspace(0, 200, 100, endpoint=True)
-    SFCs = (SFC(dT) - SFC(0)) / SFC(0)
-    mdots = (mdot_cool_func(dT)+6.396) / 6.396
-    etas = (eta_h_func(dT) - (eta_h_func(0))) / eta_h_func(0)
+    dT = np.linspace(0, 300, 100, endpoint=True)
+    SFCs = SFC(dT)
+    mdots = mdot_cool_func(dT)
+    etas = eta_h_func(dT)
     
-    fs = f_func(0) /f_func(dT)
+    fs = f_func(dT)
+
+    fig, axs = plt.subplots(2,2)
     
-    plt.plot(dT, SFCs*100, label="Change in SFC")
-    plt.plot(dT, etas*100, label="Change in HPT efficiency")
-    
-    plt.xlim(0, max(dT))
-    plt.xlabel("Temperature rise (K)")
-    plt.ylabel("% Change")
-    plt.title("HPT Temperature Rise Trade Study")
-    plt.legend()
+    axs[0][0].plot(dT, SFCs, "b-", linewidth=2 ,label="Change in SFC")
+    axs[0][1].plot(dT, etas, "k-", linewidth=2,label="Change in HPT efficiency")
+    axs[1][0].plot(dT, fs, "r-", linewidth=2 ,label="Change in fuel fraction")
+    axs[1][1].plot(dT, mdots, "c-",linewidth=2 ,label="Change in cooling mass flow rate")
+
+    for ax in axs.ravel():
+        ax.legend()
+        ax.set_xlim(0, max(dT))
+        ax.set_xlabel("Temperature rise (K)")
+    fig.suptitle("HPT Temperature Rise Trade Study")
     plt.show()
     
     
@@ -1073,7 +1077,6 @@ def efficiency_from_yps(M2, M3r, V2, V3r, Yp, Yp_rel, alpha_r3, rt, rm, rh):
     return eta_tt - delta_eta_tt
 
 if __name__ == "__main__":
-
     # print(0.8*Blade.AN2_max/1e6)
     # print(0.95*Blade.rim_speed_max)
     # quit()
@@ -1101,7 +1104,6 @@ if __name__ == "__main__":
                               0.0651, 0.1687, var_dict1['alpha3_rels'],
                               var_dict1["rts"],var_dict1["rms"], var_dict1["rhs"])
     print(eta_tts)
-    quit()
     rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
 
     ret_dict = off_design(0.9*var_dict1["RPMs"],
@@ -1122,7 +1124,9 @@ if __name__ == "__main__":
     final_root_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rhs'])
     final_tip_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rts'])
     R_root1 = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
-                               final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)     
+                               final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)    
+    R_tip1  = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
+                               final_tip_triangle.V1, final_tip_triangle.V2, final_tip_triangle.V3)    
 
     M2_root1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
                                final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)[1]  
@@ -1135,12 +1139,12 @@ if __name__ == "__main__":
 
     root_V3r = final_root_triangle.V3 * np.cos(final_root_triangle.alpha3) / np.cos(final_root_triangle.alpha_r3)
     tip_V3r  = final_tip_triangle.V3 * np.cos(final_tip_triangle.alpha3) / np.cos(final_tip_triangle.alpha_r3)    
+    print(R_root1, R_tip1)
         
     temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
                               root_V2r, var_dict1["V2_rels"], tip_V2r,
                               root_V3r, var_dict1["V3_rels"], tip_V3r)
-    
-    quit()
+    quit()    
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
     Mrel2_hub = V2_rel / sound(Conditions.T02_mix/temperature_ratio(M2_root1))
@@ -1149,7 +1153,7 @@ if __name__ == "__main__":
     print(f"Meanline = {final_mean_triangle}")
     print(f"Root = {final_root_triangle}")
     print(f"Tip = {final_tip_triangle}")
-    
+    print(root_V2r, tip_V2r)
     
     xs = np.linspace(0,2,5)
     ys = np.linspace(0,2,5)
