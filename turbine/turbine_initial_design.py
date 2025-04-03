@@ -856,10 +856,6 @@ def off_design(RPM, rm, V2, alpha2, beta2, alpha3_r, dP_rel, T2, P2, A3, V3r_act
             "P03": P03,
             "sp.work": work
         }
-
-        
-        
-        
     }
 
 def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
@@ -913,14 +909,15 @@ def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
         M2r_from_work(M2r, M2, alpha2),
         M3r_from_work(M3r, M2, alpha2)
     ]
+    print(A2)
     equation_vector_packaged = lambda args: equation_vector(args[0], args[1], args[2], args[3])
-    # result_vector = least_squares(equation_vector_packaged, [1,1,1,1], bounds=((0,0,0,0), (1,1.5,1,np.pi)), ftol=None, xtol=None, max_nfev=1e4, jac='3-point')
-    # result_vector.x
-    # print(result_vector)
-    # print(equation_vector_packaged(result_vector.x))
-    result_vector = fsolve(equation_vector_packaged, [0,0.5,0.5,0], full_output=True)
-    M2, Mr2, Mr3, alpha2 = result_vector[0]
-    alpha2 = alpha2 % (2*np.pi)
+    result_vector = least_squares(equation_vector_packaged, [1,1,1,1], bounds=((0,0,0,0), (1,1.5,1,np.pi)), ftol=None, xtol=None, max_nfev=1e4, jac='3-point')
+    result_vector.x
+    print(result_vector)
+    print(equation_vector_packaged(result_vector.x))
+    # result_vector = fsolve(equation_vector_packaged, [0,0.5,0.5,0], full_output=True)
+    M2, Mr2, Mr3, alpha2 = result_vector.x
+    # alpha2 = alpha2 % (2*np.pi)
     return M2, Mr2, Mr3, alpha2
 
 
@@ -1051,20 +1048,22 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
 
 if __name__ == "__main__":
 
-    print(0.8*Blade.AN2_max/1e6)
-    print(0.95*Blade.rim_speed_max)
-    quit()
-    # Testing solver integrated with Yps    
+    # print(0.8*Blade.AN2_max/1e6)
+    # print(0.95*Blade.rim_speed_max)
+    # quit()
+    # # Testing solver integrated with Yps    
     # Uhub = 0.95*Blade.rim_speed_max
     # AN2 = 0.95*Blade.AN2_max
     # RPM = 24000
-    # Yp = 0.36
-    # Yr = 0.2836
+    # Yp = 0.0582
+    # Yr = 0.1598
     # M3 = 0.55
-    # alpha3 = np.deg2rad(33)    
+    # alpha3 = np.deg2rad(35)    
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
-    # var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
+
+    quit()
+    var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.525)
     V1 = var_dict1["V1"]
 
