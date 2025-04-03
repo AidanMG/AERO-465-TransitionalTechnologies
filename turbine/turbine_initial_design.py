@@ -973,7 +973,6 @@ def partDq2():
     plt.legend()
     plt.show()
     
-    quit()
     
     
     
@@ -1051,8 +1050,10 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     pass
 
 if __name__ == "__main__":
-    partDq2()
 
+    print(0.8*Blade.AN2_max/1e6)
+    print(0.95*Blade.rim_speed_max)
+    quit()
     # Testing solver integrated with Yps    
     # Uhub = 0.95*Blade.rim_speed_max
     # AN2 = 0.95*Blade.AN2_max
@@ -1103,10 +1104,9 @@ if __name__ == "__main__":
     root_V3r = final_root_triangle.V3 * np.cos(final_root_triangle.alpha3) / np.cos(final_root_triangle.alpha_r3)
     tip_V3r  = final_tip_triangle.V3 * np.cos(final_tip_triangle.alpha3) / np.cos(final_tip_triangle.alpha_r3)    
         
-    temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
-                              root_V2r, var_dict1["V2_rels"], tip_V2r,
-                              root_V3r, var_dict1["V3_rels"], tip_V3r)
-    quit()    
+    # temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
+    #                           root_V2r, var_dict1["V2_rels"], tip_V2r,
+    #                           root_V3r, var_dict1["V3_rels"], tip_V3r)
     
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
@@ -1116,7 +1116,6 @@ if __name__ == "__main__":
     print(f"Meanline = {final_mean_triangle}")
     print(f"Root = {final_root_triangle}")
     print(f"Tip = {final_tip_triangle}")
-    quit()
     
     
     xs = np.linspace(0,2,5)
@@ -1125,7 +1124,7 @@ if __name__ == "__main__":
 
     #### USING ANTHONY'S PROCEDURE ####
 
-    NUM = 50
+    NUM = 100
 
     # Assume based on Ma3 and Alpha3s
     Ma3 = np.linspace(0.5, Stage.M_out_max*1.0, NUM, endpoint=True)
@@ -1139,7 +1138,7 @@ if __name__ == "__main__":
     AN2s = np.linspace(0.80*Blade.AN2_max, 1.0*Blade.AN2_max, 20, endpoint=True)
     Uhubs = np.linspace(0.80*Blade.rim_speed_max, 1.0*Blade.rim_speed_max, 20, endpoint=True)
 
-    Rs = np.linspace(0.4, 0.7, 30, endpoint=True) # Assume a reaction
+    Rs = np.linspace(0.52, 0.53, 10, endpoint=True) # Assume a reaction
     Ma3s, alpha3s, AN2s, Uhubs, Rs = np.meshgrid(Ma3, alpha3, AN2s, Uhubs, Rs)
     mesh = [Ma3s, alpha3s, AN2s, Uhubs, Rs]
 
@@ -1172,7 +1171,7 @@ if __name__ == "__main__":
 
     AN2_val = 0.80*Blade.AN2_max
     U_val = 0.95*Blade.rim_speed_max
-    R_val = 0.60
+    R_val = 0.525
 
     Yps, Yp_rels, M2_roots, M2_tips, R_roots, R_tips, Ma3s,  alpha3s, alpha2s, RPMs = yield_subgrids(data, mesh, indices=(2,3,4), values=(AN2_val, U_val, R_val))
 
