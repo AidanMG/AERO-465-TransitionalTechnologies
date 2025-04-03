@@ -924,6 +924,60 @@ def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
     return M2, Mr2, Mr3, alpha2
 
 
+def partDq2():
+    # Initial values
+    T03 = 515.992
+    P04 = 592.845
+    FHV = 40007.390 # kJ/kg
+    T04 = 1132.865 # K
+    mdot_5 = 6.797
+    
+    f_func = lambda dT: (Cp_g*(T04 + dT) - Cp_air*T03)/(FHV*1000 - Cp_g * (T04 + dT))
+    
+    dT_slope = 100 * 5/9 # 100F increase
+    
+    eta_h_func = lambda dT: 0.88 - (dT/dT_slope * 0.002)
+    
+    mdot_cool_func = lambda dT: 6.396 * 0.01 * (dT/dT_slope) # ADDITIONAL cooling air, assume supplied at blade outlet
+    
+    T05 = lambda dT: 910.521 + dT   
+    T05_mix = lambda dT: 1/(Cp_g*(mdot_cool_func(dT) + mdot_5)) * (Cp_air * T03 * mdot_cool_func(dT) + Cp_g * mdot_5 * (905.929 + dT))
+    
+    P05 = lambda dT: (P04 * (1 - 1/eta_h_func(dT) * (1 - (T05(dT))/(T04 + dT)))**(1.333/0.333))
+    
+    P05_itd = lambda dT: (P05(dT))*0.99
+        
+    T06 = lambda dT: T05_mix(dT) * (1 - 0.91 * (1 - (105.939/P05_itd(dT))**(0.333/1.333)))
+    
+    W_net = lambda dT: -1 * (6.797 + mdot_cool_func(dT)) * (T06(dT) - T05_mix(dT)) * Cp_g
+    
+    
+    
+    SFC = lambda dT: 3600*f_func(dT) * mdot_5 / W_net(dT)
+
+
+    dT = np.linspace(0, 200, 100, endpoint=True)
+    SFCs = (SFC(dT) - SFC(0)) / SFC(0)
+    mdots = (mdot_cool_func(dT)+6.396) / 6.396
+    etas = (eta_h_func(dT) - (eta_h_func(0))) / eta_h_func(0)
+    
+    fs = f_func(0) /f_func(dT)
+    
+    plt.plot(dT, SFCs*100, label="Change in SFC")
+    plt.plot(dT, etas*100, label="Change in HPT efficiency")
+    
+    plt.xlim(0, max(dT))
+    plt.xlabel("Temperature rise (K)")
+    plt.ylabel("% Change")
+    plt.title("HPT Temperature Rise Trade Study")
+    plt.legend()
+    plt.show()
+    
+    quit()
+    
+    
+    
+
 
 def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt):
     span_fraction = np.linspace(0,1,100,endpoint=True)
@@ -997,6 +1051,7 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     pass
 
 if __name__ == "__main__":
+    partDq2()
 
     # Testing solver integrated with Yps    
     # Uhub = 0.95*Blade.rim_speed_max
