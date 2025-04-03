@@ -976,7 +976,8 @@ def partDq2():
 
 
 def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt):
-    span_fraction = np.linspace(0,1,100,endpoint=True)
+    NUM = 100
+    span_fraction = np.linspace(0,1,NUM,endpoint=True)
     
     #T01 varies according to RDTF
     T01s = Conditions.T01_var(span_fraction)
@@ -1011,15 +1012,25 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     fig.set_size_inches(16,9)
     vmin = np.min(np.array([T1s, T2_pre, T2_post, T3s]).ravel())
     vmax = np.max(np.array([T1s, T2_pre, T2_post, T3s]).ravel())
+
+
+    ymax_vanes = span_fraction[np.argmax(T1s)], span_fraction[np.argmax(T2_pre)]
+    ymax_blades = span_fraction[np.argmax(T2_post)], span_fraction[np.argmax(T3s)]
+
+
     norm = Normalize(vmin, vmax)
     
     
     vaneplot = ax[0].contourf(xs, ys, np.array([T1s, T2_pre]).T, levels=20, vmin=vmin, vmax=vmax)
+    ax[0].plot(np.array([0,1]), ymax_vanes, 'r--', label="spanwise location of maximum temperature")
+    ax[0].legend()
     ax[0].set_title("Vane temperature distribution")
     ax[0].set_xlabel("chord fraction")
     ax[0].set_ylabel("span fraction")
     
     bladeplot = ax[1].contourf(xs, ys, np.array([T2_post, T3s]).T, levels=20, vmin=vmin, vmax=vmax)
+    ax[1].plot(np.array([0,1]), ymax_blades, 'r--', label="spanwise location of maximum temperature")
+
     ax[1].set_title("Blade temperature distribution")
     ax[1].set_xlabel("chord fraction")
     ax[1].set_ylabel("span fraction")
@@ -1046,6 +1057,13 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     
     pass
 
+def efficiency_from_yps(M2, M3r, V2, V3r, Yp, Yp_rel):
+    zeta_N = Yp / (1 + 1.333/2 * M2**2)
+    zeta_R = Yp_rel / (1 + 1.333/2 * M3r**2)
+
+    eta_tt = 1 / (1 + ((zeta_N*V2**2 + zeta_R*V3r**2)/(2*Cp_g*(Conditions.T01 - Conditions.T03))))
+    return eta_tt
+
 if __name__ == "__main__":
 
     # print(0.8*Blade.AN2_max/1e6)
@@ -1061,14 +1079,16 @@ if __name__ == "__main__":
     # alpha3 = np.deg2rad(35)    
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
-
-    quit()
     var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
     var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.525)
     V1 = var_dict1["V1"]
 
     pretty_print(var_dict1)
+    print(efficiency_from_yps(var_dict1["M2s"], var_dict1["Ma3_rels"],
+                              var_dict1["V2s"], var_dict1["V3_rels"],
+                              var_dict1["Yps"],var_dict1["Yp_rels"]))
 
+    quit()
     rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
 
     ret_dict = off_design(0.9*var_dict1["RPMs"],
@@ -1103,10 +1123,11 @@ if __name__ == "__main__":
     root_V3r = final_root_triangle.V3 * np.cos(final_root_triangle.alpha3) / np.cos(final_root_triangle.alpha_r3)
     tip_V3r  = final_tip_triangle.V3 * np.cos(final_tip_triangle.alpha3) / np.cos(final_tip_triangle.alpha_r3)    
         
-    # temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
-    #                           root_V2r, var_dict1["V2_rels"], tip_V2r,
-    #                           root_V3r, var_dict1["V3_rels"], tip_V3r)
+    temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
+                              root_V2r, var_dict1["V2_rels"], tip_V2r,
+                              root_V3r, var_dict1["V3_rels"], tip_V3r)
     
+    quit()
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
     Mrel2_hub = V2_rel / sound(Conditions.T02_mix/temperature_ratio(M2_root1))
