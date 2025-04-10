@@ -168,6 +168,17 @@ def plot_blades(rim_speed=Blade.rim_speed_max, AN2 = Blade.AN2_max):
 
 
 def get_midspan_velocity_triangles(flow_coeff, reaction, area_ratio):
+    """Get velocity triangles at the midspan from flow coefficient, reaction, and area ratio
+    NO LONGER USED -- Assumes constant Ca/density which is not at all accurate
+
+    Args:
+        flow_coeff (_type_): _description_
+        reaction (_type_): _description_
+        area_ratio (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
 
     ### Conditions at the inlet ###
     T1 = Conditions.T01/temperature_ratio(Stage.M_in) # Temperature at the first stage
@@ -267,23 +278,28 @@ def analyze_triangle_range(flow_coeffs, reactions, area_ratio):
         ax.set_xlabel("phi")
         ax.set_ylabel("R")
 
-def get_pressures(V1, P01, alphas, ARs):
-    pass
-
-def get_temperatures(V1, T01, alphas, ARs):
-    pass
-
-def get_mach(V1, M1, alphas, ARs):
-    pass
-
-
 def get_reaction(vel_tri: VelocityTriangle):
-
+    """Get reaction degree from velocity triangle
+    NO LOGNER USED - Assumes constant density
+    """
 
     phi = vel_tri.V2*np.cos(vel_tri.alpha2)/vel_tri.U
     return 0.5*phi*(np.tan(vel_tri.alpha_r3)-np.tan(vel_tri.alpha_r2))
     
 def get_temp_reaction(T01s, T02s, T03s, V1s, V2s, V3s):
+    """Get temperature-based reaction from speeds and total temps at locations
+
+    Args:
+        T01s (_type_): _description_
+        T02s (_type_): _description_
+        T03s (_type_): _description_
+        V1s (_type_): _description_
+        V2s (_type_): _description_
+        V3s (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     T1s = T01s - (V1s)**2/(2*Cp_g)
     T2s = T02s - (V2s)**2/(2*Cp_g)
     T3s = T03s - (V3s)**2/(2*Cp_g)
@@ -291,6 +307,19 @@ def get_temp_reaction(T01s, T02s, T03s, V1s, V2s, V3s):
 
 
 def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
+    """Get mach number offset at a certain location -- feed velocities and total temps to get the Mach
+
+    Args:
+        T01s (_type_): _description_
+        T02s (_type_): _description_
+        T03s (_type_): _description_
+        V1s (_type_): _description_
+        V2s (_type_): _description_
+        V3s (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     T1s = T01s - (V1s)**2/(2*Cp_g)
     T2s = T02s - (V2s)**2/(2*Cp_g)
     T3s = T03s - (V3s)**2/(2*Cp_g)
@@ -301,6 +330,19 @@ def get_mach_offset(T01s, T02s, T03s, V1s, V2s, V3s):
     return M1s, M2s, M3s    
 
 def get_mach_offset_2(T1s, T2s, T3s, V1s, V2s, V3s):
+    """Gets mach number offset if static temperatures are defined instead
+
+    Args:
+        T1s (_type_): _description_
+        T2s (_type_): _description_
+        T3s (_type_): _description_
+        V1s (_type_): _description_
+        V2s (_type_): _description_
+        V3s (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     M1s = V1s / sound(T1s)
     M2s = V2s / sound(T2s)
     M3s = V3s / sound(T3s)
@@ -395,6 +437,7 @@ def plot_triangle_reaction_ranges(triangle_midspan, RPM, rim_speeds, an2s):
         ax.set_ylabel("AN2, % of structural limit")
 
 def full_solver(M1s, alpha1s, ARs, alpha2s, Yps, T01s):
+    """NON WORKING code that cuts out a few variables from the used method by instead assuming you know Yps"""
     # Reshape all arrays to 1D for solver
     shape = M1s.shape
     M1s = M1s.ravel()
@@ -434,6 +477,9 @@ def full_solver(M1s, alpha1s, ARs, alpha2s, Yps, T01s):
     return M2s, V2s, T2s, T02s, P2s, P02s
 
 def condition_plotter(M2s, V2s, T2s, T02s, P2s, P02s, title=None):
+    """Baseline code to plot the conditions along the blade
+    
+    """
     fig, axs = plt.subplots(3,2)
     plt.subplots_adjust(hspace=0.5)
     if title:
@@ -469,6 +515,18 @@ def condition_plotter(M2s, V2s, T2s, T02s, P2s, P02s, title=None):
     pass
 
 def angle_grid(midspan:VelocityTriangle, root:VelocityTriangle, tip:VelocityTriangle, num, plot=False):
+    """Plots the angle along the vane and blade, assuming they change linearly throughout the chord and quadratically throughout the span
+
+    Args:
+        midspan (VelocityTriangle): _description_
+        root (VelocityTriangle): _description_
+        tip (VelocityTriangle): _description_
+        num (_type_): _description_
+        plot (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        _type_: _description_
+    """
     # Grid of x and y coordinates, relative to span and chord length
     xs = np.linspace(0,1,num,endpoint=True)
     xs,ys = np.meshgrid(xs,xs)
@@ -511,6 +569,11 @@ def angle_grid(midspan:VelocityTriangle, root:VelocityTriangle, tip:VelocityTria
     return vanes, blades
 
 def blade_surface_geometry(alphas: np.ndarray):
+    """Get the blade surface geometry -- NOT WORKING
+
+    Args:
+        alphas (np.ndarray): _description_
+    """
     ny, nx = alphas.shape
     
     xs = np.linspace(0,1,nx,endpoint=True)
@@ -523,6 +586,7 @@ def blade_surface_geometry(alphas: np.ndarray):
     #     print(alphas[i])
 
 def extract_final_conds(condition_array):
+    """utility function"""
     ret_list = []
     for arg in condition_array:
         arg = arg.T[-1]
@@ -541,6 +605,8 @@ def extract_final_conds(condition_array):
 #     return M2rs, V2rs, T2s, T02s, P2s, P02s
 
 def gridifier(*args, ax=1):
+    """Takes arbitrary list of (same-length 1D) arrays of values and returns an N-dimensional mesh of all the values instead
+    """
     ret_list = []
     for arg in args:
         if ax == 1:
@@ -552,6 +618,11 @@ def gridifier(*args, ax=1):
 
 
 def NANify(*args):
+    """Fills all cells in all arrays with the NAN values form all other cells in all other arrays
+
+    Returns:
+        _type_: _description_
+    """
     nan_array = np.full_like(args[0], 1)
     for arg in args:
         nan_array = np.where(np.isnan(arg), np.nan, nan_array)
@@ -561,6 +632,8 @@ def NANify(*args):
     return args
 
 def NANify_dict(d: dict):
+    """Does the same as NANify but for a dictionary instead
+    """
     items = list(d.items())
     nan_array = np.full_like(items[0], 1)
     for item in items:
@@ -766,6 +839,7 @@ def yield_subgrids(arrays, axes, indices, values):
     return subgrids
 
 def pretty_print(d, headers=0):
+    """Prints big dictionaries to look nice (including embedded dictionaries)"""
     print(headers*"\t" + "{")
     for key in d:
         if type(d[key]) == dict:
@@ -859,6 +933,21 @@ def off_design(RPM, rm, V2, alpha2, beta2, alpha3_r, dP_rel, T2, P2, A3, V3r_act
     }
 
 def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
+    """Computing the velocity triangles instead STARTING from losses, and assuming a fixed RPM.
+    Requires solving a system of 5 non-linear equations and doesn't guarantee good results, so this method was not used.
+
+    Args:
+        Yp (_type_): _description_
+        Yr (_type_): _description_
+        M3 (_type_): _description_
+        alpha3 (_type_): _description_
+        AN2 (_type_): _description_
+        Uhub (_type_): _description_
+        RPM (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     # Params for later: (Yp, Yr, M3, alpha3, AN2, Uhub, RPM, area_ratio)
     
     Um = 0.5*Uhub + np.sqrt(np.pi*AN2/3600 +Uhub**2 / 4)
@@ -922,6 +1011,8 @@ def computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM):
 
 
 def partDq2():
+    """All the work for the HPT weight reduction/temperature increase trade study
+    """
     # Initial values
     T03 = 515.992
     P04 = 592.845
@@ -931,7 +1022,7 @@ def partDq2():
     
     f_func = lambda dT: (Cp_g*(T04 + dT) - Cp_air*T03)/(FHV*1000 - Cp_g * (T04 + dT))
     
-    dT_slope = 100 * 5/9 # 100F increase
+    dT_slope = 100 * 5/9 # 100F increaseC
     
     eta_h_func = lambda dT: 0.88 - (dT/dT_slope * 0.002)
     
@@ -940,7 +1031,7 @@ def partDq2():
     T05 = lambda dT: 910.521 + dT   
     T05_mix = lambda dT: 1/(Cp_g*(mdot_cool_func(dT) + mdot_5)) * (Cp_air * T03 * mdot_cool_func(dT) + Cp_g * mdot_5 * (905.929 + dT))
     
-    P05 = lambda dT: (P04 * (1 - 1/eta_h_func(dT) * (1 - (T05(dT))/(T04 + dT)))**(1.333/0.333))
+    P05 = lambda dT: (P04 * (1 - 1/eta_h_func(dT) * (1 - (T05(dT))/(1112.203 + dT)))**(1.333/0.333))
     
     P05_itd = lambda dT: (P05(dT))*0.99
         
@@ -975,11 +1066,90 @@ def partDq2():
     plt.show()
     
     
+def pressure_distributions(M2r, M2m, M2t, M3r, M3m, M3t, P02):
+    """Plotting the pressure distributions along the blade using hub, tip values where needed
+
+    Args:
+        M2r (_type_): _description_
+        M2m (_type_): _description_
+        M2t (_type_): _description_
+        M3r (_type_): _description_
+        M3m (_type_): _description_
+        M3t (_type_): _description_
+        P02 (_type_): _description_
+    """
+    NUM = 100
+    span_fraction = np.linspace(0,1,NUM,endpoint=True)
     
+    #P01 is constant varies according to RDTF
+    P01s = np.full_like(span_fraction, Conditions.P01)
+    P1s = P01s / pressure_ratio(Stage.M_in)
+        
+    # M2 varies, interpolate 
+    M2_func = intp.interp1d([0, 0.5, 1], [M2r, M2m, M2t])
+    M2s = M2_func(span_fraction)
+    
+    # Compute mixing, assuming flux is even across the entire region
+    P2s = P02 / pressure_ratio(M2s)
+    
+    M3_func = intp.interp1d([0, 0.5, 1], [M3r, M3m, M3t])
+    M3s = M3_func(span_fraction)
+    
+    P3s = Conditions.P03 / pressure_ratio(M3s)
+        
+    xs, ys = np.meshgrid([0,1], span_fraction)
+    
+    plt.set_cmap("jet")
+    
+    fig, ax = plt.subplots(1,2)
+    fig.set_size_inches(16,9)
+    vmin = np.min(np.array([P1s, P2s, P3s]).ravel())
+    vmax = np.max(np.array([P1s, P2s, P3s]).ravel())
+
+
+    ymax_vanes = span_fraction[np.argmax(P1s)], span_fraction[np.argmax(P2s)]
+    ymax_blades = span_fraction[np.argmax(P2s)], span_fraction[np.argmax(P3s)]
+
+
+    norm = Normalize(vmin, vmax)
+    
+    
+    vaneplot = ax[0].contourf(xs, ys, np.array([P1s, P2s]).T, levels=20, vmin=vmin, vmax=vmax)
+    ax[0].set_title("Vane pressure distribution")
+    ax[0].set_xlabel("chord fraction")
+    ax[0].set_ylabel("span fraction")
+    
+    bladeplot = ax[1].contourf(xs, ys, np.array([P2s, P3s]).T, levels=20, vmin=vmin, vmax=vmax)
+
+    ax[1].set_title("Blade pressure distribution")
+    ax[1].set_xlabel("chord fraction")
+    ax[1].set_ylabel("span fraction")
+    
+    im = cm.ScalarMappable(norm=norm)
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Pressure (kPa)")
+        
+    plt.ylim(0,1)
+    plt.show()
+    
+    pass  
     
 
 
 def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt):
+    """Plotting the temperature distribution across the vane,blade using Vs where needed.
+
+    Args:
+        M2r (_type_): _description_
+        M2m (_type_): _description_
+        M2t (_type_): _description_
+        V2rr (_type_): _description_
+        V2rm (_type_): _description_
+        V2rt (_type_): _description_
+        V3rr (_type_): _description_
+        V3rm (_type_): _description_
+        V3rt (_type_): _description_
+    """
     NUM = 100
     span_fraction = np.linspace(0,1,NUM,endpoint=True)
     
@@ -1042,18 +1212,6 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     im = cm.ScalarMappable(norm=norm)
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label("Temperature (K)")
-    
-    
-    
-    
-    
-    
-    
-    
-    
-      
-    
-     
         
     plt.ylim(0,1)
     plt.show()
@@ -1062,21 +1220,42 @@ def temperature_distributions(M2r, M2m, M2t, V2rr, V2rm, V2rt, V3rr, V3rm, V3rt)
     pass
 
 def efficiency_from_yps(M2, M3r, V2, V3r, Yp, Yp_rel, alpha_r3, rt, rm, rh):
+    """Get the actual efficiency from the pressure loss factors
+
+    Args:
+        M2 (_type_): _description_
+        M3r (_type_): _description_
+        V2 (_type_): _description_
+        V3r (_type_): _description_
+        Yp (_type_): _description_
+        Yp_rel (_type_): _description_
+        alpha_r3 (_type_): _description_
+        rt (_type_): _description_
+        rm (_type_): _description_
+        rh (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     zeta_N = Yp / (1 + 1.333/2 * M2**2)
     zeta_R = Yp_rel / (1 + 1.333/2 * M3r**2)
     print(zeta_N, zeta_R)
 
 
     eta_tt = 1 / (1 + ((zeta_N*V2**2 + zeta_R*V3r**2)/(2*Cp_g*(Conditions.T01 - Conditions.T03))))
+    print(eta_tt)
     h = (rt - rh)
     delta_tc = 0.01 * h
     delta_eta_tt = 0.93 * eta_tt * (delta_tc) / (h * np.cos(alpha_r3)) * (rt/rm)
-
-
+    print(delta_eta_tt)
 
     return eta_tt - delta_eta_tt
 
 if __name__ == "__main__":
+    """ -- Run things here, or comment them out to change how things are run. quit() early to kill the process before it finishes running
+    """
+    print(Conditions.T01_max)
+    print(Conditions.T01_slope)
     # print(0.8*Blade.AN2_max/1e6)
     # print(0.95*Blade.rim_speed_max)
     # quit()
@@ -1091,60 +1270,93 @@ if __name__ == "__main__":
     # M2, Mr2, Mr3, alpha2 = computation_from_losses(Yp, Yr, M3, alpha3, AN2, Uhub, RPM)
     # print(M2, Mr2, Mr3, np.rad2deg(alpha2))
     var_dict = new_method_midspan(0.55, np.deg2rad(33), 0.95*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.60)
-    var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.525)
+    var_dict1 = new_method_midspan(0.52, np.deg2rad(39), 0.80*Blade.AN2_max, 0.95*Blade.rim_speed_max, 0.525) # THESE ARE OUR VALUES
     V1 = var_dict1["V1"]
 
     pretty_print(var_dict1)
 
-    Yps = np.linspace(0.02, 0.15, num=100)
-    Yp_rels = np.linspace(0.15, 0.35, num=100)
-    Yps, Yp_rels = np.meshgrid(Yps, Yp_rels)
+    # Yps = np.linspace(0.02, 0.15, num=100)
+    # Yp_rels = np.linspace(0.15, 0.35, num=100)
+    # Yps, Yp_rels = np.meshgrid(Yps, Yp_rels)
+    
+    #EFFICIENCIES
     eta_tts = efficiency_from_yps(var_dict1["M2s"], var_dict1["Ma3_rels"],
                               var_dict1["V2s"], var_dict1["V3_rels"],
-                              0.0651, 0.1687, var_dict1['alpha3_rels'],
+                              0.0651, 0.1685, var_dict1['alpha3_rels'],
                               var_dict1["rts"],var_dict1["rms"], var_dict1["rhs"])
     print(eta_tts)
-    rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
-
-    ret_dict = off_design(0.9*var_dict1["RPMs"],
-        rm=var_dict1["rms"],
-        V2=var_dict1['V2s'],
-        alpha2=var_dict1['alpha2s'],
-        beta2=np.deg2rad(45.0854),
-        alpha3_r=var_dict1["alpha3_rels"],
-        dP_rel = var_dict1['P02_rels'] - var_dict1['P03_rels'],
-        T2=var_dict1['T2s'],
-        P2=var_dict1["P2s"],
-        A3=var_dict1['A3s'],
-        V3r_actual=var_dict1["V3_rels"])
-    pretty_print(ret_dict)
     
-    final_mean_triangle = VelocityTriangle(var_dict1["Ums"], V1, var_dict1["V2s"], var_dict1["V3s"], Stage.swirl_in, var_dict1["alpha2s"], np.deg2rad(35), var_dict1["alpha2_rels"], var_dict1["alpha3_rels"])
+    print("OFF DESIGN")
+    eta_tts = efficiency_from_yps(var_dict1["M2s"], 1.1520,
+                              var_dict1["V2s"], 652.60,
+                              0.0651, 0.1914, var_dict1['alpha3_rels'],
+                              var_dict1["rts"],var_dict1["rms"], var_dict1["rhs"])
+    print(eta_tts)    
+    # rho3_computed = 1000 * var_dict1["P03_rels"] * (1 - (var_dict1["V3_rels"]**2) / (2*Cp_g*var_dict1['T2s'] + var_dict1["V2_rels"]**2)) ** (1.333/0.333) /(R_air * (var_dict1['T2s'] + (var_dict1["V2_rels"]**2 - var_dict1["V3_rels"]**2) / (2*Cp_g)))
+
+    # ret_dict = off_design(0.9*var_dict1["RPMs"],
+    #     rm=var_dict1["rms"],
+    #     V2=var_dict1['V2s'],
+    #     alpha2=var_dict1['alpha2s'],
+    #     beta2=np.deg2rad(45.0854),
+    #     alpha3_r=var_dict1["alpha3_rels"],
+    #     dP_rel = var_dict1['P02_rels'] - var_dict1['P03_rels'],
+    #     T2=var_dict1['T2s'],
+    #     P2=var_dict1["P2s"],
+    #     A3=var_dict1['A3s'],
+    #     V3r_actual=var_dict1["V3_rels"])
+    # pretty_print(ret_dict)
+    
+    # These are our triangles
+    final_mean_triangle = VelocityTriangle(var_dict1["Ums"], V1, var_dict1["V2s"], var_dict1["V3s"], Stage.swirl_in, var_dict1["alpha2s"], np.deg2rad(39), var_dict1["alpha2_rels"], var_dict1["alpha3_rels"])
     # print(final_mean_triangle)
     final_root_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rhs'])
     final_tip_triangle = get_offset_triangle(final_mean_triangle, var_dict1['rms'], var_dict1['rts'])
+    print(f"Final Mean Triangle:{final_mean_triangle}\n\n")
+    
+    print(f"Final Root Triangle:{final_root_triangle}\n\n")
+    print(f"Final Tip Triangle: {final_tip_triangle}\n\n")
+    
+    # Get all the other offset values
     R_root1 = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
                                final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)    
     R_tip1  = get_temp_reaction(Conditions.T01, Conditions.T02, Conditions.T03,
                                final_tip_triangle.V1, final_tip_triangle.V2, final_tip_triangle.V3)    
 
-    M2_root1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
-                               final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)[1]  
+    M2_root1, M3_root1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
+                               final_root_triangle.V1, final_root_triangle.V2, final_root_triangle.V3)[1:]  
     
-    M2_tip1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
-                               final_tip_triangle.V1, final_tip_triangle.V2, final_tip_triangle.V3)[1]
+    M2_tip1, M3_tip1 = get_mach_offset(Conditions.T01, Conditions.T02, Conditions.T03,
+                               final_tip_triangle.V1, final_tip_triangle.V2, final_tip_triangle.V3)[1:]
     
     root_V2r = final_root_triangle.V2 * np.cos(final_root_triangle.alpha2) / np.cos(final_root_triangle.alpha_r2)
     tip_V2r  = final_tip_triangle.V2 * np.cos(final_tip_triangle.alpha2) / np.cos(final_tip_triangle.alpha_r2)
 
     root_V3r = final_root_triangle.V3 * np.cos(final_root_triangle.alpha3) / np.cos(final_root_triangle.alpha_r3)
     tip_V3r  = final_tip_triangle.V3 * np.cos(final_tip_triangle.alpha3) / np.cos(final_tip_triangle.alpha_r3)    
+    print("OFFSET RELATIVE")
+    print(root_V2r)
+    print(root_V3r)
+    print(tip_V2r)
+    print(tip_V3r)
+    print("REACTIONS")  
     print(R_root1, R_tip1)
-        
+    print("MACHS")
+    print(M2_root1, M2_tip1)
+    print(M3_root1, M3_tip1)
+    
+    print("RELATIVE MACHS")
+    print() #not useful
+    
+    # Temperature and Pressure distributions
+    pressure_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
+                              M3_root1, var_dict1["Ma3s"], M3_tip1,var_dict1["P02s"])    
     temperature_distributions(M2_root1, var_dict1['M2s'], M2_tip1,
                               root_V2r, var_dict1["V2_rels"], tip_V2r,
                               root_V3r, var_dict1["V3_rels"], tip_V3r)
-    quit()    
+
+
+    # Some more analysis used for Dat's aero code
     Va_hub = final_root_triangle.V2*np.cos(final_root_triangle.alpha2)
     V2_rel = Va_hub/np.cos(final_root_triangle.alpha_r2)
     Mrel2_hub = V2_rel / sound(Conditions.T02_mix/temperature_ratio(M2_root1))
@@ -1159,7 +1371,9 @@ if __name__ == "__main__":
     ys = np.linspace(0,2,5)
     xs, ys = np.meshgrid(xs, ys)
 
-    #### USING ANTHONY'S PROCEDURE ####
+
+    #### FULL 5-DIMENSIONAL PLOTTING PROCEDURE ###
+    #### USING ALTERNATE PROCEDURE ####
 
     NUM = 100
 
